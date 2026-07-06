@@ -10,6 +10,7 @@
 #
 # Connection strings for .env:
 #   DATABASE_URL=postgresql+psycopg2://testuser:testpass@localhost:5432/testdb
+#   DATABASE_MYSQL_URL=mysql+pymysql://testuser:testpass@localhost:3306/testdb
 #   REDIS_URL=redis://:redis123@localhost:6379/0
 #   S3_ENDPOINT=http://localhost:9000
 #   S3_ACCESS_KEY=minioadmin
@@ -76,6 +77,26 @@ services:
       POSTGRES_DB: testdb
     volumes:
       - postgres-test-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MySQL 8 — App 通用测试数据库
+  # ---------------------------------------------------------------------------
+  # 独立于 RAGflow 内部依赖 mysql，给 app 本地测试使用。
+  # mysql -h localhost -P 3306 -u testuser -ptestpass testdb
+  # ---------------------------------------------------------------------------
+  mysql-app:
+    image: mysql:8.0
+    container_name: test-mysql-app
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: testrootpass
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+    volumes:
+      - mysql-app-test-data:/var/lib/mysql
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -157,6 +178,7 @@ services:
 volumes:
   minio-test-data:
   postgres-test-data:
+  mysql-app-test-data:
   qdrant-test-data:
   ragflow-test-data:
   mysql-test-data:

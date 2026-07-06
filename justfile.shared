@@ -126,7 +126,7 @@ lint mode="": _check-completion
     #!/usr/bin/env bash
     set -euo pipefail
 
-    source ./scripts/hooks/quality_flag.sh
+    source ./scripts/shared/hooks/quality_flag.sh
 
     print_lint_usage() {
         echo "Usage:"
@@ -149,7 +149,7 @@ lint mode="": _check-completion
 
         if quality_skip_is_empty_or_only "check-test-flag" && [ "$staged_archive_prd_transition" -eq 0 ] && quality_flag_matches "$flag_file" "$branch_name" "$head_hash" "$current_tree"; then
             if ! quality_skip_contains "check-test-flag"; then
-                bash ./scripts/hooks/check_test_flag.sh
+                bash ./scripts/shared/hooks/check_test_flag.sh
             fi
             echo "✅ just lint --full flag valid: $branch_name @ ${head_hash:0:8}"
             return 0
@@ -238,7 +238,7 @@ clean:
 
 # Build a release zip (does NOT modify local workspace)
 release:
-    uv run python scripts/release.py
+    uv run python scripts/shared/release.py
 
 # Run a diagnostic check.
 # Usage:
@@ -271,10 +271,10 @@ codex-notify action="install" shortcut_name="codex通知":
     set -euo pipefail
     case "{{action}}" in
         install)
-            ./scripts/codex/install_macos_notify.sh "{{shortcut_name}}"
+            ./scripts/shared/codex/install_macos_notify.sh "{{shortcut_name}}"
             ;;
         test)
-            CODEX_NOTIFY_VERBOSE=1 CODEX_NOTIFY_SHORTCUT_NAME="{{shortcut_name}}" ./scripts/codex/notify_shortcut.sh '{"type":"agent-turn-complete","last-assistant-message":"Codex notify manual test"}'
+            CODEX_NOTIFY_VERBOSE=1 CODEX_NOTIFY_SHORTCUT_NAME="{{shortcut_name}}" ./scripts/shared/codex/notify_shortcut.sh '{"type":"agent-turn-complete","last-assistant-message":"Codex notify manual test"}'
             ;;
         *)
             echo "ERROR: Unknown action: {{action}}"
@@ -283,10 +283,26 @@ codex-notify action="install" shortcut_name="codex通知":
             ;;
     esac
 
+# Create a new Alembic migration script under alembic/versions/.
+# The script enforces the YYYYMMDD_HHMMSS_<slug>.py naming convention defined
+# in docs/ai-standards/alembic.md and refuses to run unless alembic has exactly
+# one head. The caller still edits upgrade() / downgrade() by hand.
+# Usage:
+#   just new-migration <slug>           # ./alembic/versions/<timestamp>_<slug>.py
+#   just new-migration <slug> <dir>     # custom alembic/versions directory
+new-migration slug versions_dir="./alembic/versions":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "{{slug}}" ]; then
+        echo "ERROR: missing <slug>. Usage: just new-migration <slug> [versions_dir]"
+        exit 2
+    fi
+    ./scripts/shared/alembic/new_migration.sh "{{slug}}" "{{versions_dir}}"
+
 staged_changes:
     git diff --cached > staged_changes.diff
 
-# Git worktree helper (implemented in scripts/worktree/)
+# Git worktree helper (implemented in scripts/shared/worktree/)
 # Usage:
 #   just worktree <branch>                            # create/enter worktree
 #   just worktree <branch> --cmd trae                 # open in editor
@@ -305,7 +321,7 @@ worktree arg1 arg2="" arg3="" arg4="" arg5="":
             echo "ERROR: Usage: just worktree -o <branch_name> [--cmd editor]"
             exit 1
         fi
-        open_cmd=(./scripts/worktree/open.sh "{{arg2}}")
+        open_cmd=(./scripts/shared/worktree/open.sh "{{arg2}}")
         for raw_arg in "{{arg3}}" "{{arg4}}" "{{arg5}}"; do
             if [ -n "$raw_arg" ]; then
                 open_cmd+=("$raw_arg")
@@ -321,7 +337,7 @@ worktree arg1 arg2="" arg3="" arg4="" arg5="":
             echo "ERROR: Usage: just worktree -d <branch_name>"
             exit 1
         fi
-        ./scripts/worktree/merge.sh "{{arg2}}" -d
+        ./scripts/shared/worktree/merge.sh "{{arg2}}" -d
         exit 0
     fi
 
@@ -331,7 +347,7 @@ worktree arg1 arg2="" arg3="" arg4="" arg5="":
             echo "ERROR: Usage: just worktree -D <branch_name>"
             exit 1
         fi
-        ./scripts/worktree/merge.sh "{{arg2}}" -D
+        ./scripts/shared/worktree/merge.sh "{{arg2}}" -D
         exit 0
     fi
 
@@ -365,23 +381,23 @@ worktree arg1 arg2="" arg3="" arg4="" arg5="":
             done
         fi
 
-        ./scripts/worktree/merge.sh "${merge_args[@]}"
+        ./scripts/shared/worktree/merge.sh "${merge_args[@]}"
         exit 0
     fi
 
     # --doctor: cleanup-check
     if [ "{{arg1}}" = "--doctor" ]; then
         if [ -n "{{arg2}}" ]; then
-            ./scripts/worktree/merge.sh --doctor "{{arg2}}"
+            ./scripts/shared/worktree/merge.sh --doctor "{{arg2}}"
         else
-            ./scripts/worktree/merge.sh --doctor
+            ./scripts/shared/worktree/merge.sh --doctor
         fi
         exit 0
     fi
 
     # Default: create/enter worktree
     branch_name="{{arg1}}"
-    worktree_command=(./scripts/worktree/create.sh "$branch_name")
+    worktree_command=(./scripts/shared/worktree/create.sh "$branch_name")
     enter_shell_value="true"
     expect_code_command="false"
     expect_base_branch="false"
@@ -535,11 +551,11 @@ worktree arg1 arg2="" arg3="" arg4="" arg5="":
 # Automatically derives branch name from the PRD filename.
 # When prompt is omitted, a default prompt is auto-generated from the PRD name.
 # Usage:
-#   just implement <prd-file> <clauded|kim> ["<prompt>"]
+#   just implement <prd-file> <claude|kimi> ["<prompt>"]
 # Examples:
-#   just implement tasks/pending/20260518-feature-x.md clauded "Implement the feature per the PRD"
-#   just implement tasks/pending/feature-x.md kim "Implement this feature"
-#   just implement tasks/pending/feature-x.md clauded  # uses default prompt
+#   just implement tasks/pending/20260518-feature-x.md claude "Implement the feature per the PRD"
+#   just implement tasks/pending/feature-x.md kimi "Implement this feature"
+#   just implement tasks/pending/feature-x.md claude  # uses default prompt
 implement prd_file ai_tool prompt="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -547,19 +563,20 @@ implement prd_file ai_tool prompt="":
     prd_file="{{prd_file}}"
     ai_tool="{{ai_tool}}"
     prompt_text="{{prompt}}"
+    repo_root="$(git rev-parse --show-toplevel)"
 
     # Validate PRD file exists
     if [ ! -f "$prd_file" ]; then
         echo "PRD file not found: $prd_file"
-        echo "Usage: just implement <prd-file> <clauded|kim> \"<prompt>\""
+        echo "Usage: just implement <prd-file> <claude|kimi> \"<prompt>\""
         exit 1
     fi
 
     # Validate AI tool
-    if [ "$ai_tool" != "clauded" ] && [ "$ai_tool" != "kim" ]; then
+    if [ "$ai_tool" != "claude" ] && [ "$ai_tool" != "kimi" ]; then
         echo "Unsupported AI tool: $ai_tool"
-        echo "Supported tools: clauded, kim"
-        echo "Usage: just implement <prd-file> <clauded|kim> \"<prompt>\""
+        echo "Supported tools: claude, kimi"
+        echo "Usage: just implement <prd-file> <claude|kimi> \"<prompt>\""
         exit 1
     fi
 
@@ -575,8 +592,13 @@ implement prd_file ai_tool prompt="":
         else
             prd_display="$prd_name"
         fi
-        prompt_text="Implement the feature per PRD '${prd_display}', complete the acceptance checklist"
-        echo "ℹ️  No prompt provided, using default: $prompt_text"
+        evidence_dir="tasks/evidence/${prd_name}"
+        executor_prompt_file="$repo_root/scripts/shared/just/executor_prompt.txt"
+        prompt_text=$(cat "$executor_prompt_file")
+        prompt_text="${prompt_text//<PRD_DISPLAY>/$prd_display}"
+        prompt_text="${prompt_text//<EVIDENCE_DIR>/$evidence_dir}"
+        prompt_text="${prompt_text//<PRD_BASENAME>/$prd_name}"
+        echo "ℹ️  No prompt provided, using evidence-aware default prompt."
         echo ""
     fi
 
@@ -590,19 +612,23 @@ implement prd_file ai_tool prompt="":
         branch_name="${BASH_REMATCH[1]}"
     fi
 
+    # Evidence directory (must match prompt and verifier expectations)
+    evidence_dir="tasks/evidence/${prd_name}"
+
     echo "PRD: $prd_file"
     echo "Branch: $branch_name"
     echo "Tool: $ai_tool"
+    echo "Evidence dir: $evidence_dir"
     echo "Prompt: $prompt_text"
     echo ""
 
     # Create worktree under tasks/ subdirectory
-    ./scripts/worktree/create.sh "$branch_name" --subdir tasks
+    ./scripts/shared/worktree/create.sh "$branch_name" --subdir tasks
     echo ""
 
-    # Determine worktree path
-    repo_root="$(git rev-parse --show-toplevel)"
-    worktree_path="$(dirname "$repo_root")/tasks/$branch_name"
+    # Determine worktree path (must match scripts/shared/worktree/create.sh)
+    repo_name="$(basename "$repo_root")"
+    worktree_path="$(dirname "$repo_root")/${repo_name}-worktrees/tasks/$branch_name"
 
     # Copy PRD file into worktree preserving relative path
     prd_abs="$(cd "$(dirname "$prd_file")" && pwd)/$(basename "$prd_file")"
@@ -613,15 +639,93 @@ implement prd_file ai_tool prompt="":
     echo "PRD copied to worktree: $prd_rel"
     echo ""
 
-    # Run AI tool in worktree via user's interactive shell (needed for alias resolution)
-    echo "Running $ai_tool in worktree..."
+    # Ensure evidence directory exists before executor runs
+    mkdir -p "$worktree_path/$evidence_dir"
+
+    # Run executor AI in worktree
+    echo "Running executor ($ai_tool) in worktree..."
     cd "$worktree_path"
-    if [ "$ai_tool" = "kim" ]; then
-        # kimi uses --prompt flag instead of positional argument
-        "${SHELL:-bash}" -i -c "$(printf '%s --prompt %q' "$ai_tool" "$prompt_text")" || true
+    ./scripts/shared/just/ai_run.sh "$ai_tool" "$prompt_text"
+
+    echo ""
+
+    # --- Verifier stage ---
+    # Pick the opposite tool as the default verifier tool
+    if [ "$ai_tool" = "claude" ]; then
+        verifier_tool="kimi"
     else
-        # clauded and others accept prompt as positional argument
-        "${SHELL:-bash}" -i -c "$(printf '%s %q' "$ai_tool" "$prompt_text")" || true
+        verifier_tool="claude"
+    fi
+
+    verifier_prompt_file="$repo_root/scripts/shared/just/verifier_prompt.txt"
+    verifier_prompt=$(cat "$verifier_prompt_file")
+    verifier_prompt="${verifier_prompt//<PRD_PATH>/$prd_rel}"
+    verifier_prompt="${verifier_prompt//<EVIDENCE_DIR>/$evidence_dir}"
+    verifier_prompt="${verifier_prompt//<PRD_BASENAME>/$prd_name}"
+
+    run_verifier() {
+        local tool="$1"
+        echo "Running verifier ($tool)..."
+        if ./scripts/shared/just/ai_run.sh "$tool" "$verifier_prompt"; then
+            return 0
+        fi
+        return 1
+    }
+
+    verifier_ran=false
+
+    if run_verifier "$verifier_tool"; then
+        verifier_ran=true
+    else
+        echo "Verifier with $verifier_tool failed. Trying same tool as executor ($ai_tool)..."
+        verifier_tool="$ai_tool"
+        if run_verifier "$verifier_tool"; then
+            verifier_ran=true
+        fi
+    fi
+
+    if [ "$verifier_ran" != "true" ]; then
+        echo ""
+        echo "❌ ERROR: Both verifier tools are unavailable."
+        echo "This usually indicates a quota, rate-limit, or API issue."
+        echo "No PRD checkbox has been marked. Please resolve the issue and rerun 'just ai implement'."
+        exit 1
+    fi
+
+    verifier_report="$worktree_path/$evidence_dir/${prd_name}.verifier-report.md"
+    if [ ! -f "$verifier_report" ]; then
+        echo ""
+        echo "❌ ERROR: Verifier did not produce a report at $verifier_report"
+        echo "Please review the output above and rerun 'just ai implement' if needed."
+        exit 1
+    fi
+
+    verdict=$(head -n 1 "$verifier_report" | tr -d '[:space:]')
+    if [ "$verdict" = "PASS" ]; then
+        echo "✅ Verifier ($verifier_tool) passed."
+    elif [ "$verdict" = "REJECT" ]; then
+        echo ""
+        echo "❌ Verifier ($verifier_tool) rejected the evidence."
+        echo "Verifier report: $verifier_report"
+        echo "Please review the report, fix the issues in the worktree, and rerun 'just ai implement'."
+        exit 1
+    else
+        echo ""
+        echo "⚠️  Verifier report has no clear PASS/REJECT verdict (first line: '$verdict')."
+        echo "Verifier report: $verifier_report"
+        echo "Please review manually."
+        exit 1
+    fi
+
+    # --- Final evidence check ---
+    echo ""
+    echo "Running final evidence check..."
+    cd "$repo_root"
+    if ./scripts/shared/just/check_prd_evidence.sh "$prd_rel" "$worktree_path"; then
+        echo "✅ Final evidence check passed."
+    else
+        echo "❌ Final evidence check failed."
+        exit 1
     fi
 
     echo ""
@@ -646,33 +750,365 @@ implement prd_file ai_tool prompt="":
     exec "${SHELL:-bash}" -i
 
 
-# Sync files from the upstream template repository.
-# Compares local files against the template and offers to apply updates.
+# AI-assisted commands.
 # Usage:
-#   just sync-template         # skip project-specific paths from config.toml [template_sync]
-#   just sync-template --all   # include project-specific files too
+#   just ai check <file_path>                 # review a file against project standards, then stay interactive
+#   just ai check <file_path> kimi            # use kimi
+#   just ai check <file_path> claude "prompt" # custom prompt (still interactive)
+#   just ai fix                               # resolve git conflicts (rebase, merge, stash pop, cherry-pick, revert) with claude, then auto-continue
+#   just ai fix kimi "custom prompt"          # resolve conflicts with kimi, then auto-continue
+#   just ai commit                            # run `just test`, then commit with claude
+#   just ai commit kimi "custom prompt"        # use kimi with a custom prompt
+#   just ai push                              # run `just test`, commit, then push with claude
+#   just ai push kimi "custom prompt"          # use kimi, then push
+#   just ai implement <prd-file> [tool]       # implement a PRD (default: claude)
+#   just ai tag <name>                        # write tag message, create annotated tag with claude, then push
+#   just ai tag <name> kimi "custom prompt"   # use kimi with a custom prompt, then push
+# Shortcuts: check, fix, commit, push, implement, tag — all delegate to scripts/shared/just/ai_run.sh
+ai subcommand arg1="" arg2="" arg3="" :
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{subcommand}}" in
+        check)
+            just _ai_check "{{arg1}}" "{{arg2}}" "{{arg3}}"
+            ;;
+        fix)
+            just _ai_fix "{{arg1}}" "{{arg2}}"
+            ;;
+        commit)
+            just _ai_commit "{{arg1}}" "{{arg2}}"
+            ;;
+        push)
+            just _ai_push "{{arg1}}" "{{arg2}}"
+            ;;
+        implement)
+            just implement "{{arg1}}" "{{arg2}}" "{{arg3}}"
+            ;;
+        tag)
+            just _ai_tag "{{arg1}}" "{{arg2}}" "{{arg3}}"
+            ;;
+        *)
+            echo "Usage:"
+            echo "  just ai check <file>            # review file against project standards, stay interactive"
+            echo "  just ai fix                     # resolve git conflicts (rebase, merge, stash pop, etc.)"
+            echo "  just ai commit                  # run just test, then commit"
+            echo "  just ai push                    # run just test, then commit and push"
+            echo "  just ai implement <prd-file>    # implement a PRD"
+            echo "  just ai tag <name>              # write tag message, create annotated tag, then push (default: claude)"
+            exit 1
+            ;;
+    esac
+
+# Internal: review a single file against project standards, then stay interactive.
+# Output is a structured report; the AI does NOT modify the file, and the
+# REPL stays open so the caller can drill into findings or request targeted
+# edits one at a time.
+# When using kimi, the previous session for the current working directory is
+# resumed automatically, so follow-up `just ai check` calls keep context.
+_ai_check file_path ai_tool="claude" prompt="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ -z "{{file_path}}" ]; then
+        echo "Usage: just ai check <file_path> [claude|kimi] [prompt]"
+        exit 1
+    fi
+
+    if [ ! -e "{{file_path}}" ]; then
+        echo "ERROR: file not found: {{file_path}}"
+        exit 1
+    fi
+
+    if [ -z "{{prompt}}" ]; then
+        # Default prompt lives in a sibling file so this recipe body
+        # stays short (just's recipe parser is indent-sensitive and
+        # multi-line string literals are awkward inside a recipe).
+        prompt_text="$(cat ./scripts/shared/just/ai_check_prompt.txt)"
+        prompt_text="${prompt_text//<FILE_PATH>/{{file_path}}}"
+    else
+        prompt_text="{{prompt}}"
+    fi
+
+    ./scripts/shared/just/ai_run.sh "{{ai_tool}}" "$prompt_text" --interactive
+
+# Internal: fix git rebase/merge conflicts with an AI tool.
+_ai_fix ai_tool="claude" prompt="" :
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    prompt_text="{{prompt}}"
+
+    # Detect any unresolved conflicts (works for rebase, merge, cherry-pick, revert, stash pop)
+    unmerged_files="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
+    if [ -z "$unmerged_files" ]; then
+        echo "No conflict files found — all clear."
+        exit 0
+    fi
+
+    # Identify the conflict source for clearer messaging, prompt context, and
+    # so we can run the correct `git * --continue` command afterwards.
+    conflict_source="git conflict"
+    git_dir="$(git rev-parse --git-dir)"
+    rebase_in_progress="false"
+    merge_in_progress="false"
+    cherry_pick_in_progress="false"
+    revert_in_progress="false"
+    stash_in_progress="false"
+    if [ -d "$git_dir/rebase-merge" ] || [ -d "$git_dir/rebase-apply" ]; then
+        conflict_source="git rebase"
+        rebase_in_progress="true"
+    elif [ -f "$git_dir/MERGE_HEAD" ]; then
+        conflict_source="git merge"
+        merge_in_progress="true"
+    elif [ -f "$git_dir/CHERRY_PICK_HEAD" ]; then
+        conflict_source="git cherry-pick"
+        cherry_pick_in_progress="true"
+    elif [ -f "$git_dir/REVERT_HEAD" ]; then
+        conflict_source="git revert"
+        revert_in_progress="true"
+    elif [ -n "$(git stash list)" ]; then
+        conflict_source="git stash pop"
+        stash_in_progress="true"
+    fi
+
+    echo "Conflicts from $conflict_source in:"
+    printf '%s\n' "$unmerged_files"
+    echo ""
+
+    # Auto-generate default prompt
+    if [ -z "$prompt_text" ]; then
+        prompt_text="Resolve all git conflicts from $conflict_source. For each conflict file, read it, merge correctly preserving the intent of both sides where possible, remove all conflict markers, then git add the resolved file. Do NOT commit and do NOT run any 'git * --continue' command — only stage the resolved files. After all files are done, run 'just test' and ensure it passes."
+    fi
+
+    ./scripts/shared/just/ai_run.sh "{{ai_tool}}" "$prompt_text"
+
+    # If the AI resolved everything, continue the interrupted git operation.
+    # If conflicts remain, print the matching continue command so the user
+    # knows exactly what to run after manual cleanup.
+    remaining_unmerged="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
+    if [ -n "$remaining_unmerged" ]; then
+        echo ""
+        echo "⚠️  Some conflicts are still unresolved:"
+        printf '%s\n' "$remaining_unmerged"
+        echo ""
+        echo "Resolve them manually, then run the appropriate continue command:"
+        [ "$rebase_in_progress" = "true" ]        && echo "  git rebase --continue"
+        [ "$merge_in_progress" = "true" ]         && echo "  git merge --continue"
+        [ "$cherry_pick_in_progress" = "true" ]   && echo "  git cherry-pick --continue"
+        [ "$revert_in_progress" = "true" ]        && echo "  git revert --continue"
+        [ "$stash_in_progress" = "true" ]         && echo "  git add . && git commit   (stash pop has no --continue)"
+        exit 1
+    fi
+
+    if [ "$rebase_in_progress" = "true" ]; then
+        echo ""
+        echo "✅ All conflicts resolved. Continuing rebase..."
+        GIT_EDITOR=true git rebase --continue
+    elif [ "$merge_in_progress" = "true" ]; then
+        echo ""
+        echo "✅ All conflicts resolved. Continuing merge..."
+        GIT_EDITOR=true git merge --continue
+    elif [ "$cherry_pick_in_progress" = "true" ]; then
+        echo ""
+        echo "✅ All conflicts resolved. Continuing cherry-pick..."
+        GIT_EDITOR=true git cherry-pick --continue
+    elif [ "$revert_in_progress" = "true" ]; then
+        echo ""
+        echo "✅ All conflicts resolved. Continuing revert..."
+        GIT_EDITOR=true git revert --continue
+    elif [ "$stash_in_progress" = "true" ]; then
+        echo ""
+        echo "✅ All conflicts resolved from stash pop. Changes are staged; commit when ready."
+    else
+        echo ""
+        echo "✅ All conflicts resolved and staged. Ready for you to review/continue."
+    fi
+
+# Internal: ask an AI tool to run `just test`, then commit current changes.
+_ai_commit ai_tool="claude" prompt="" :
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    prompt_text="{{prompt}}"
+
+    # Fail fast if there is nothing to commit
+    if [ -z "$(git status --porcelain)" ]; then
+        echo "No changes to commit."
+        exit 0
+    fi
+
+    # Auto-generate default prompt
+    if [ -z "$prompt_text" ]; then
+        prompt_text="First, run \`just test\` in the repository root to verify all tests pass. If tests fail, fix the underlying issues and re-run until \`just test\` is green. Once tests pass, review the current git changes (git status, git diff, and git diff --cached) and create a commit. Stage relevant files with git add, then write a clear commit message in English following conventional commit style (e.g. 'feat(scope): ...', 'fix(scope): ...', 'refactor(scope): ...'). Keep the subject line under 72 characters and use the body to explain the 'why' rather than the 'what'. Do NOT push. Do NOT amend existing commits. If pre-commit hooks fail, fix the underlying issues and create a new commit (never amend). Proceed autonomously without asking for confirmation at any step — commit directly once \`just test\` is green."
+    fi
+
+    ./scripts/shared/just/ai_run.sh "{{ai_tool}}" "$prompt_text"
+
+# Internal: ask an AI tool to run `just test` and commit, then push the result.
+_ai_push ai_tool="claude" prompt="" :
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    prompt_text="{{prompt}}"
+
+    # Fail fast if there is nothing to commit
+    if [ -z "$(git status --porcelain)" ]; then
+        echo "No changes to commit."
+        exit 0
+    fi
+
+    # Auto-generate default prompt
+    if [ -z "$prompt_text" ]; then
+        prompt_text="First, run \`just test\` in the repository root to verify all tests pass. If tests fail, fix the underlying issues and re-run until \`just test\` is green. Once tests pass, review the current git changes (git status, git diff, and git diff --cached) and create a commit. Stage relevant files with git add, then write a clear commit message in English following conventional commit style (e.g. 'feat(scope): ...', 'fix(scope): ...', 'refactor(scope): ...'). Keep the subject line under 72 characters and use the body to explain the 'why' rather than the 'what'. Do NOT amend existing commits. If pre-commit hooks fail, fix the underlying issues and create a new commit (never amend). Proceed autonomously without asking for confirmation at any step — commit directly once \`just test\` is green. After you finish, the script will handle the push, so you do NOT need to push."
+    fi
+
+    ./scripts/shared/just/ai_run.sh "{{ai_tool}}" "$prompt_text"
+
+    # AI finished - now handle push with safety checks and user confirmation.
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🤖 AI finished. Preparing to push..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    current_branch="$(git rev-parse --abbrev-ref HEAD)"
+    upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+
+    if [ -z "$upstream" ]; then
+        # No upstream - ask user to set up
+        remote="$(git remote | head -1)"
+        if [ -z "$remote" ]; then
+            echo "ERROR: Branch '$current_branch' has no upstream and no git remote is configured."
+            echo "Add a remote first, e.g.: git remote add origin <url>"
+            exit 1
+        fi
+
+        echo "Branch '$current_branch' has no upstream."
+        read -r -p "Push to '$remote/$current_branch' and set upstream? [Y/n] " confirm
+        case "$confirm" in
+            ""|y|Y|yes|YES)
+                git push -u "$remote" "$current_branch"
+                ;;
+            *)
+                echo "Push cancelled."
+                exit 0
+                ;;
+        esac
+    else
+        # Has upstream - check ahead count
+        ahead_count="$(git rev-list --count '@{u}'..HEAD 2>/dev/null || echo "0")"
+        if [ "$ahead_count" -eq 0 ]; then
+            echo "Nothing to push (branch '$current_branch' is up to date with $upstream)."
+            exit 0
+        fi
+
+        echo "Branch '$current_branch' is $ahead_count commit(s) ahead of $upstream. Pushing..."
+        git push
+    fi
+
+# Internal: ask an AI tool to write a release-note message, create an annotated
+# git tag on the current commit, and push the tag to the default remote.
+_ai_tag tag_name ai_tool="claude" prompt="" :
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Capture recipe params into shell vars so downstream defaults and
+    # validation all read from the same place.
+    tag_name="{{tag_name}}"
+    ai_tool="{{ai_tool}}"
+    prompt_text="{{prompt}}"
+
+    if [ -z "$tag_name" ]; then
+        echo "Error: tag name is required."
+        echo "Usage: just ai tag <name> [claude|kimi] [prompt]"
+        exit 1
+    fi
+
+    # Tag is the only `ai` subcommand that strictly whitelists tools,
+    # since wrong tool here would silently create a malformed tag.
+    # The `ai` dispatcher always forwards all positional args, so an
+    # unspecified tool arrives as an empty string — default it to claude.
+    if [ -z "$ai_tool" ]; then
+        ai_tool="claude"
+    elif [ "$ai_tool" != "claude" ] && [ "$ai_tool" != "kimi" ]; then
+        echo "Unsupported AI tool: $ai_tool"
+        echo "Supported tools: claude, kimi (default: claude)"
+        echo "Usage: just ai tag <name> [claude|kimi] [prompt]"
+        exit 1
+    fi
+
+    if [ -z "$prompt_text" ]; then
+        last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+        if [ -n "$last_tag" ]; then
+            range_desc="commits since ${last_tag}"
+            log_cmd="git log --oneline ${last_tag}..HEAD"
+        else
+            range_desc="all commits"
+            log_cmd="git log --oneline"
+        fi
+        prompt_text="Summarize the ${range_desc} with \`${log_cmd}\` (and \`git diff --stat <ref>..HEAD\` if needed) and create an annotated git tag named '${tag_name}' on the current HEAD using \`git tag -a '${tag_name}' -m \"<release notes>\"\`. The tag message should be a scannable release note — short subject line, then a few bullet points describing user-visible changes. If the tag already exists locally, do NOT overwrite or delete it — stop and report the conflict. Do NOT amend existing commits. The script will push the tag after you finish, so do NOT push. Proceed autonomously without asking for confirmation — tag directly."
+    fi
+
+    echo "Tag: $tag_name"
+    ./scripts/shared/just/ai_run.sh "$ai_tool" "$prompt_text"
+
+    # AI finished - auto-push the tag to the default remote.
+    # Tags are not pushed by `git push` unless explicitly named or `--tags` is used,
+    # so the recipe handles push here rather than relying on the user.
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🏷️  AI finished tagging. Pushing tag '$tag_name'..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    remote="$(git remote | head -1)"
+    if [ -z "$remote" ]; then
+        echo "WARNING: No git remote configured. Tag '$tag_name' created locally only."
+        echo "Push it manually with: git push <remote> $tag_name"
+        exit 0
+    fi
+
+    if git ls-remote --tags "$remote" "$tag_name" 2>/dev/null | grep -q "refs/tags/$tag_name\$"; then
+        echo "Tag '$tag_name' already exists on $remote. Skipping push."
+        exit 0
+    fi
+
+    git push "$remote" "$tag_name"
+
+# Sync files from the upstream template repository.
+# Compares local files against the template and lets you pick which to apply
+# via an fzf TUI with per-entry diff preview.
+# Usage:
+#   just sync-template            # TUI: upstream-owned entries only
+#   just sync-template --all      # TUI: all entries except config.toml project_skip_paths
+#   just sync-template --list     # print upstream-owned entries, no TUI, no apply
+#   just sync-template --list-all # print all entries, no TUI, no apply
+#   just sync-template --dry-run  # run TUI but don't write anything
 sync-template flags="":
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -n "{{flags}}" ]; then
-        ./scripts/sync_template.sh {{flags}}
-    else
-        ./scripts/sync_template.sh
-    fi
+    ./scripts/sync_template.sh {{flags}}
 
-# Sync skills from the local project to the AI assistant's skill directory.
-# Usage:
-#   just sync-local-skills
-sync-local-skills:
-    ./scripts/sync_template.sh --local-skills
-
-# Run tests after `just lint --full` (usage: just test [all|local|real])
-#   just test        - Run local tests (no API keys needed)
+# Run tests after `just lint --full` (usage: just test [local|all|real])
+#   just test        - Run local tests (no API keys needed; skip if code unchanged)
 #   just test all    - Run all tests
 #   just test real   - Run tests requiring API keys
 @test type="local": _check-completion
     #!/usr/bin/env bash
     set -euo pipefail
+
+    source ./scripts/shared/hooks/quality_flag.sh
+
+    git_dir="$(quality_git_dir)"
+    flag_file="$git_dir/.last_tested_commit"
+    branch_name="$(quality_branch_name)"
+    head_hash="$(quality_head_hash)"
+    test_tree="$(quality_effective_tree working test)"
+
+    if [ "{{type}}" = "local" ] && quality_flag_matches "$flag_file" "$branch_name" "$head_hash" "$test_tree"; then
+        echo "✅ just test flag valid: $branch_name @ ${head_hash:0:8} (tree: ${test_tree:0:8}); skipping tests."
+        exit 0
+    fi
 
     echo "🔍 Running full lint checks..."
     if ! SKIP=check-test-flag just lint --full >/dev/null 2>&1; then
@@ -680,7 +1116,6 @@ sync-local-skills:
         echo "   Run: just lint --full"
         exit 1
     fi
-    source ./scripts/hooks/quality_flag.sh
     lint_tree_after_lint="$(quality_effective_tree working lint)"
     echo "✅ Lint passed. Proceeding to tests..."
 
@@ -697,18 +1132,28 @@ sync-local-skills:
         fi
     fi
 
+    pytest_exit_code=0
     if [ "{{type}}" = "all" ]; then
-        uv run pytest tests/ -v
+        uv run pytest tests/ -v -m '' -n auto || pytest_exit_code=$?
     elif [ "{{type}}" = "real" ]; then
-        uv run pytest tests/ -v -k "expensive or not expensive"
+        uv run pytest tests/ -v -m 'real_api' -n auto || pytest_exit_code=$?
+        if [ "$pytest_exit_code" -eq 5 ]; then
+            echo "ℹ️  No real_api tests collected; treating as success."
+            pytest_exit_code=0
+        fi
     else
-        uv run pytest tests/ -v
+        # Local mode relies on pyproject.toml addopts to exclude slow/real_api
+        # and to enable pytest-xdist parallel execution.
+        uv run pytest tests/ -v || pytest_exit_code=$?
+    fi
+
+    if [ "$pytest_exit_code" -ne 0 ]; then
+        exit "$pytest_exit_code"
     fi
 
     # Write flag after tests pass, binding branch, HEAD and effective tree.
     # Effective tree includes only files that may enter test/lint, excluding
     # docs, images and other unrelated types so .md edits don't trigger retest.
-    git_dir="$(quality_git_dir)"
     branch_name="$(quality_branch_name)"
     head_hash="$(quality_head_hash)"
     test_tree="$(quality_effective_tree working test)"
@@ -718,34 +1163,29 @@ sync-local-skills:
     echo "✅ just lint --full flag updated: $branch_name @ $head_hash"
 
 
-# Run Playwright e2e tests (requires: just e2e-install first)
-# Usage:
-#   just e2e            # all tests (excluding visual regression)
-#   just e2e smoke      # smoke tests only
-#   just e2e no-auth    # public-page tests (no login required)
-#   just e2e report     # open HTML test report
-e2e type="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}/tests/playwright-e2e"
-    case "{{type}}" in
-        smoke)   npm run test:smoke ;;
-        no-auth) npm run test:no-auth ;;
-        report)  npm run report ;;
-        "")      npm test ;;
-        *)
-            echo "ERROR: Unknown type: {{type}}"
-            echo "Usage: just e2e [smoke|no-auth|report]"
-            exit 1
-            ;;
-    esac
-
-# Install e2e dependencies and Playwright browsers (run once before first just e2e)
+# Install E2E dependencies and Playwright browsers (first time only).
 e2e-install:
-    cd "{{justfile_directory()}}/tests/playwright-e2e" && npm install && npx playwright install chromium
+    cd "{{justfile_directory()}}/tests/playwright-e2e" && pnpm install
+    cd "{{justfile_directory()}}/tests/playwright-e2e" && pnpm exec playwright install chromium
+
+# Run E2E tests locally, starting services with `just run` if not already running.
+# Usage:
+#   just e2e
+#   just e2e headed                              # run with --headed --workers=1
+#   just e2e smoke                               # run only smoke tests
+#   just e2e @visual                             # run tests matching a grep tag
+#   just e2e tests/smoke/public-home.no-auth.spec.ts
+#   just e2e tests/smoke/public-home.no-auth.spec.ts --headed
+#   PLAYWRIGHT_SKIP_STACK_BOOT=1 just e2e        # reuse already-running services, skip teardown
+e2e *filter:
+    cd "{{justfile_directory()}}" && ./scripts/shared/e2e/run-with-just-stack.sh "{{filter}}"
+
+# Show the Playwright HTML report from the last E2E run.
+e2e-report:
+    cd "{{justfile_directory()}}/tests/playwright-e2e" && pnpm report
 
 # Pack all gitignored .env* files into a password-protected encrypted zip.
-# Output: ./<project_name>_secrets.zip  (one fixed file per project root)
+# Output: ./<project_name>.zip  (one fixed file per project root)
 # Password is prompted interactively at compression time; required again to extract.
 export-env-encrypted:
-    ./scripts/secrets/export_env_encrypted.sh
+    ./scripts/shared/secrets/export_env_encrypted.sh

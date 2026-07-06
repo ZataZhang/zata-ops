@@ -1,0 +1,125 @@
+# =============================================================================
+# Configuration File - Non-Sensitive Defaults
+# =============================================================================
+# This file contains non-sensitive configuration defaults organized by section.
+# Sensitive values (passwords, API keys) should be set in .env file.
+#
+# To override any value, either:
+# 1. Set the corresponding environment variable (highest priority)
+# 2. Modify this file
+# 3. Accept the code default (lowest priority)
+# =============================================================================
+
+# =============================================================================
+# Application Settings
+# =============================================================================
+[app]
+name = "my-app"
+log_level = "INFO"
+
+# =============================================================================
+# Template Sync Settings
+# =============================================================================
+[template_sync]
+# Project-level paths skipped by `just sync-template --all`.
+#
+# Default mode (`just sync-template` with no flags) only shows upstream-owned
+# files (justfile.shared, scripts/shared/*, scripts/build/*, AI standards,
+# tool entry files, hooks/shared/*.py, etc.) — see `_is_upstream_owned` in
+# scripts/shared/template/sync_template.sh for the full allowlist. The list
+# below is irrelevant in default mode.
+#
+# --all mode additionally surfaces these project-level paths so you can decide
+# which to bring into your fork. Add new project-owned directories here so
+# the TUI stays focused on real conflicts.
+project_skip_paths = [
+    "src/backend/",
+    "frontend-admin/",
+    "frontend-public/",
+    "docs/",
+    "tests/",
+    # E2E infrastructure is upstream-owned; only project-specific specs are skipped.
+    "tests/playwright-e2e/tests/",
+    "apps/",
+    "services/",
+    "infra/",
+    "deploy/",
+    "helm/",
+    "terraform/",
+    "ansible/",
+    "data/",
+    "uploads/",
+    "artifacts/",
+    "tmp/",
+]
+
+# Paths that should stay visible even if they match `project_skip_paths`.
+project_include_paths = []
+
+# =============================================================================
+# Database Settings (PostgreSQL)
+# =============================================================================
+[database]
+backend = "postgresql"
+host = "localhost"
+port = 5432
+name = "app_database"
+driver = "psycopg2"
+
+# =============================================================================
+# OpenAI-Protocol Provider Registry
+# =============================================================================
+# Each [providers.<name>] table declares one OpenAI-compatible endpoint.
+# The API key itself stays in .env; this file only records which env var to read.
+#
+# Model names in code are passed as "provider/model_id" strings, e.g.:
+#   "openai/gpt-4o"
+#   "dashscope/qwen3-max"
+#   "deepseek/deepseek-chat"
+#   "openrouter/anthropic/claude-3.5-sonnet"
+# Adding a new provider = copy one block, change name / base_url / api_key_env,
+# then use `create_chat_model("<name>/<model>")` in code. No Python changes.
+#
+# Scope: OpenAI-protocol providers only. Native Anthropic / Google adapters
+# would need separate chat-model classes and are intentionally out of scope.
+#
+# Optional [providers.<name>.extra] table is forwarded verbatim to ChatOpenAI
+# (useful for default_headers, extra_body, organization, ...).
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+description = "OpenAI"
+
+[providers.dashscope]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key_env = "DASHSCOPE_API_KEY"
+description = "Alibaba DashScope (Qwen) — OpenAI-compatible"
+
+[providers.deepseek]
+base_url = "https://api.deepseek.com/v1"
+api_key_env = "DEEPSEEK_API_KEY"
+description = "DeepSeek — OpenAI-compatible"
+
+[providers.openrouter]
+base_url = "https://openrouter.ai/api/v1"
+api_key_env = "OPENROUTER_API_KEY"
+description = "OpenRouter multi-provider aggregator"
+
+# =============================================================================
+# Observability Settings
+# =============================================================================
+# Controls whether and how the backend emits telemetry signals.
+# All values can be overridden by environment variables with the prefix
+# OBSERVABILITY_ (e.g. OBSERVABILITY_ENABLED=false).
+#
+# These settings are intentionally platform-agnostic: JSON logs and Prometheus
+# metrics can be consumed by Vector/Loki, Fluentd/Elasticsearch, Datadog,
+# New Relic, SigNoz, or any other observability backend.
+[observability]
+enabled = true
+metrics_enabled = true
+request_id_enabled = true
+log_format = "text"
+service_name = "zata-ops-backend"
+service_version = "0.1.0"
+deployment_environment = "development"

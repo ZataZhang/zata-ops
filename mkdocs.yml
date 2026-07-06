@@ -42,7 +42,11 @@ nav:
       - VPS 初始化: guides/vps-provisioning.md
       - SSH 隧道: guides/tunnel.md
   - 系统架构:
+      - 系统设计: architecture/system-design.md
       - 监控栈: architecture/monitoring-stack.md
+  - 前端子项目:
+      - Admin: frontend/admin.md
+      - Public: frontend/public.md
   - AI 规范:
       - 概览: ai-standards/index.md
       - 架构规范: ai-standards/architecture.md

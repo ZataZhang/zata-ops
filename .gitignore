@@ -34,13 +34,9 @@ site/
 .eslintcache
 *.tsbuildinfo
 
-# Environment files
-.env
-.env.local
-.env.local.docker
-.env.development.local
-.env.test.local
-.env.production.local
+# Environment files — ignore all .env* except *.env*.example
+.env*
+!.env*.example
 
 
 
@@ -58,3 +54,4 @@ coverage/
 Thumbs.db
 
 # Claude planning session archives (local state, not for VCS)
+frontend-admin/
