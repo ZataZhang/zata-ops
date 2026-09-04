@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub VPS 自动部署"
+  short_description: "为项目创建通过 GitHub Actions 发布到 VPS 的部署流程"
+  default_prompt: "分析当前项目并创建安全、可回滚的 GitHub Actions VPS 部署流程。"
