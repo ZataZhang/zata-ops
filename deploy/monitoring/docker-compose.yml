@@ -12,46 +12,99 @@
 #     a `/metrics` endpoint for Prometheus.
 # -----------------------------------------------------------------------------
 
+x-runtime: &runtime
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   vector:
-    image: timberio/vector:0.45.0-distroless-libc
+    <<: *runtime
+    image: timberio/vector:0.58.0-debian
     command: ["--config", "/etc/vector/vector.yaml"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - vector-data:/var/lib/vector
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    environment:
+      # 仅加载管理员管理的环境配置，密码由脚本生成单行十六进制值。
+      VECTOR_DANGEROUSLY_ALLOW_ENV_VAR_INTERPOLATION: "true"
+      PROCFS_ROOT: /host/proc
+      SYSFS_ROOT: /host/sys
+      NODE_NAME: ${NODE_NAME:-monitoring}
+      LOKI_ENDPOINT: http://loki:3100
+      METRICS_ENDPOINT: http://prometheus:9090/api/v1/write
+      INGEST_USER: internal
+      INGEST_PASSWORD: internal
+    mem_limit: 256m
+    cpus: 0.5
     networks:
       - monitoring
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:3.2.1
+    <<: *runtime
+    image: grafana/loki:3.7.7
+    mem_limit: 2g
+    cpus: 1.0
     command: ["-config.file=/etc/loki/local-config.yaml"]
     volumes:
       - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
     networks:
       - monitoring
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.logs-ingest.rule=Host(`grafana.${DOMAIN:?Set DOMAIN}`) && Path(`/loki/api/v1/push`)"
+      - "traefik.http.routers.logs-ingest.entrypoints=websecure"
+      - "traefik.http.routers.logs-ingest.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.logs-ingest.middlewares=monitoring-ingest@file"
+      - "traefik.http.services.logs-ingest.loadbalancer.server.port=3100"
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v2.54.1
+    <<: *runtime
+    image: prom/prometheus:v3.14.0
+    mem_limit: 1g
+    cpus: 0.75
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-lifecycle"
+      - "--web.enable-remote-write-receiver"
+      - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=10GB"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
       - monitoring
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.metrics-ingest.rule=Host(`grafana.${DOMAIN:?Set DOMAIN}`) && Path(`/api/v1/write`)"
+      - "traefik.http.routers.metrics-ingest.entrypoints=websecure"
+      - "traefik.http.routers.metrics-ingest.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.metrics-ingest.middlewares=monitoring-ingest@file"
+      - "traefik.http.services.metrics-ingest.loadbalancer.server.port=9090"
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.3.0
+    <<: *runtime
+    image: grafana/grafana:13.2.1
+    mem_limit: 768m
+    cpus: 0.75
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:?Set a strong Grafana password}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://grafana.${DOMAIN}}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -75,6 +128,7 @@ services:
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 
 volumes:
+  vector-data:
   loki-data:
   prometheus-data:
   grafana-data:

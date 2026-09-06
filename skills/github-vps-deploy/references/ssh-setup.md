@@ -2,6 +2,57 @@
 
 当 GitHub Actions 尚不能登录目标 VPS 时，必须向用户交付完整步骤。命令中的值应替换为当前项目的真实设置；不要把尖括号占位符直接执行。
 
+## 默认交付：初始化脚本
+
+当创建用户、生成密钥、核验指纹、写 GitHub Environment 和 registry 登录需要多条命令时，优先在目标仓库生成一个项目初始化脚本，并把下文手工流程保留为排障文档。用户只需复制 `.env.example`、填写 `.env`、先运行只读预检，再正式执行脚本。
+
+推荐配置流：
+
+```text
+<deploy-dir>/.env.example  -> 提交；只含安全默认值和空凭据
+<deploy-dir>/.env          -> Git 忽略、chmod 600；用户填写
+<deploy-dir>/.credentials/ -> Git 忽略、chmod 700；保存项目专用密钥
+```
+
+脚本至少应具备以下行为：
+
+1. 无真实 `.env` 时，从 `.env.example` 创建并停止，让用户先填写。
+2. `--check` 或 `--dry-run` 只做配置、依赖、GitHub 权限、可信 root/admin SSH、Docker 和网络检查，不创建用户、密钥、GitHub 设置或远端文件。
+3. 正式模式生成或复用单仓库 Ed25519 密钥；缺一半的密钥对必须停止，不得静默覆盖。
+4. 通过已有可信管理员 SSH 幂等创建项目专用用户、`authorized_keys` 和应用目录。默认用户名从项目 slug 推导为 `<slug>-deploy`，并允许配置覆盖。
+5. 从可信 SSH 会话读取 `/etc/ssh/ssh_host_ed25519_key.pub`，同时单独运行 `ssh-keyscan`，比较两者指纹后生成 `SSH_KNOWN_HOSTS`。
+6. 使用严格主机校验和新私钥验证部署用户的 Docker 与目录权限。
+7. 使用 `gh api`、`gh secret set`、`gh variable set` 创建或更新 Environment 配置；所有密码和私钥都从标准输入传递。
+8. 使用 `docker login --password-stdin` 配置服务器拉取权限，并只上传不含初始化凭据的部署元数据。
+9. 输出密钥保存路径和下一步，但不输出密钥、token、完整业务 env，也不自动发布。
+
+`.env.example` 的字段按项目裁剪，常见内容如下：
+
+| 类型 | 字段示例 |
+| --- | --- |
+| GitHub | `GITHUB_REPOSITORY`、`GITHUB_ENVIRONMENT` |
+| VPS | `SERVER_HOST`、`SERVER_PORT`、`SERVER_ROOT_USER`、`SERVER_USER`、`APP_DIR` |
+| Registry | `REGISTRY_HOST`、`IMAGE_NAMESPACE`、`REGISTRY_USERNAME`、空的 `REGISTRY_PASSWORD` |
+| Routing | `DOMAIN`、`HEALTHCHECK_URL`、`TRAEFIK_NETWORK` |
+
+不要把本地初始化 `.env` 原样上传到 VPS，因为它可能包含 registry password。应生成一个经过字段白名单筛选的远端部署 env。应用的数据库 DSN、API keys 和认证密钥继续放在独立的服务器运行 env 中。
+
+下文是无法使用自动脚本时的手工排障流程。
+
+## 应用运行配置的首次上传与更新
+
+区分本地初始化配置（包含 SSH/GitHub/registry 设置）和应用配置（数据库、认证、模型密钥）。用户明确指定项目根目录 `.env` 或其他文件作为应用配置来源时，让初始化脚本直接上传，不再要求用户到服务器逐项重填。
+
+- 文档明确源文件和远端目标，例如项目根目录 `.env` → `$APP_DIR/app.env`；不将初始化 `.env` 当作应用配置。
+- 检查源文件存在、可读且非空。按原始字节传输，不用 `source`/`eval` 执行应用配置，不在日志中打印内容；不隐式合并 `.env.local` 或替换数据库地址。
+- 首次目标不存在时上传；已有目标默认保留。提供 `--update-app-env` 或等价显式入口，并说明它执行完整初始化还是仅同步配置。
+- 更新时在目标目录创建权限 `600` 的临时文件，传输完整且校验通过后才原子替换；失败应保留旧目标。替换前保存权限 `600` 的上一份备份，并说明保留策略。
+- `--check` 即使与更新参数同时使用，也不得上传或覆盖远端配置。
+- 配置上传不等于容器已加载新配置；明确是否需要重建/重启，不因上传请求自行扩展为生产发布。
+- 提醒核对本地地址、路径和开发数据库是否适用于生产；是否共享数据库和密钥由用户的部署选择决定。
+
+使用临时目录与虚构配置验证首次写入、默认保留、显式替换、备份、权限、特殊字符原样保留和失败不破坏旧文件。真实上传未经验证时披露这一边界，不把仓库业务测试通过当作传输验证。
+
 ## 凭据流向
 
 推荐在可信本机生成一对仅供该仓库部署使用的 Ed25519 密钥：
@@ -63,7 +114,7 @@ sudo install -d -m 750 -o deploy -g deploy /opt/apps/<app-name>
 ```bash
 DEPLOY_HOST="<server-host-or-ip>"
 DEPLOY_PORT="22"
-DEPLOY_USER="deploy"
+DEPLOY_USER="<project-slug>-deploy"
 DEPLOY_APP_DIR="/opt/apps/<app-name>"
 
 ssh-copy-id \

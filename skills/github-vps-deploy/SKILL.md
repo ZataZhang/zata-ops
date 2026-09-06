@@ -1,6 +1,6 @@
 ---
 name: github-vps-deploy
-description: 为已有项目创建或改进 GitHub Actions 持续部署流程，将容器镜像发布到镜像仓库并通过 SSH 部署到使用 Docker Compose 的自有 VPS，可适配宿主机 Traefik 入口；不用于集群编排、无容器部署或仅编写普通 CI 的请求。
+description: 为已有项目创建或改进 GitHub Actions 持续部署流程，包括首次 SSH/GitHub Environment 自动配置、镜像仓库发布和 Docker Compose VPS 部署，可适配宿主机 Traefik 入口；不用于集群编排、无容器部署或仅编写普通 CI 的请求。
 ---
 
 # GitHub Actions 部署到 VPS
@@ -13,8 +13,9 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 2. 搜索并理解现有的 `.github/workflows/`、Dockerfile、Compose 文件、部署脚本、环境变量示例和运维文档；优先复用，避免另建平行部署体系。
 3. 确认服务器使用普通 Docker Compose；如果项目实际采用集群编排，应说明本 Skill 不覆盖该部署形态，不要擅自改变服务器架构。
 4. 盘点镜像构建矩阵：每个镜像的 context、Dockerfile、目标平台、运行服务和远端 env 键。
-5. 若需要具体实现模式或 GitHub 配置清单，读取 [部署模式与实现要求](references/deployment-patterns.md)。
+5. 若需要具体实现模式、GitHub 配置清单或排查发布失败，读取 [部署模式与实现要求](references/deployment-patterns.md)，其中包含镜像仓库兼容性、资源预检与冷启动经验。
 6. 如果用户尚未配置 GitHub Actions 到 VPS 的 SSH 访问，必须读取并交付 [首次配置 SSH 凭据](references/ssh-setup.md)，不能只列出 Secret 名称。
+7. 如果首次配置涉及多条 SSH、`gh`、registry 或文件上传命令，默认生成一个可重复执行的初始化脚本和对应 `.env.example`；除非用户明确只要手工说明，不要把整套初始化工作转嫁给用户逐条执行。
 
 ## 交付内容
 
@@ -25,6 +26,7 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 - 非敏感配置示例，例如 `.env.example`；
 - 部署文档，列清 GitHub Variables、Secrets、服务器一次性准备、触发方式、验证和回滚方法。
 - SSH 首次配置说明，包括密钥生成、公钥安装、主机指纹核验、GitHub Secrets 填写和连接验证。
+- 首次部署尚未完成时，优先提供项目内初始化脚本与 Git 忽略的本地配置流；脚本应能通过 GitHub CLI 配置 Environment，并通过 SSH 准备部署用户和目录。
 
 不要写入真实密钥、服务器地址或业务密码，不要自动配置 GitHub 仓库设置，也不要触发真实 workflow、push、发布或服务器部署，除非用户对这些外部变更另有明确授权。
 
@@ -32,6 +34,7 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 
 - 将构建和部署拆成独立 job，部署 job 明确依赖构建成功。
 - 镜像使用 `${{ github.sha }}` 等不可变 tag；允许额外推送可读 tag，但部署和回滚不能只依赖 `latest`。
+- 首次配置无需用户预知发布 SHA 或填写逐服务镜像 URL；镜像清单来自项目构建矩阵与 Compose，发布脚本应支持实际服务数量，不硬编码为前后端两个镜像。第三方镜像保留自身版本。
 - 设置最小 `permissions`。GHCR 通常只需 `contents: read` 与 `packages: write`。
 - 使用 GitHub Environment 区分 staging/production，并使用 `concurrency` 防止同一环境并发发布。
 - Secrets 只放凭据；主机名、端口、目录、域名等非敏感配置优先放 Variables。
@@ -39,16 +42,32 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 - 远端稳定业务配置保留在服务器；workflow 只传本次发布所需的镜像引用和发布标识，避免覆盖服务器上的生产密钥。
 - Traefik 已是宿主机公共入口时，应用栈只加入既有 external network 并声明 labels，不重复启动另一个 Traefik。
 - 部署前验证必需输入、目标目录、Compose 渲染、Docker 网络和所需文件；失败时应在切流前退出。
+- 实际检查 VPS 的 CPU、可用内存与已有服务占用，再决定资源限制和冷启动等待预算；配置能渲染不代表 Docker 能创建容器或应用能及时就绪。
+- 明确 Compose 文件如何更新：若 CD 只更新镜像引用，修改本地 Compose 后还须备份、校验并同步服务器文件，不能把 push/tag 当作配置已经生效。
 - 部署后轮询真实公开健康检查 URL，并设定有限次数、间隔与明确超时；失败必须让 job 失败。
 - 明确回滚入口，优先通过 `workflow_dispatch` 输入旧的 git SHA/镜像 tag，跳过重新构建并重新部署不可变镜像。
 - 日志不得输出私钥、token、registry password 或完整业务 env；必要时只输出是否存在、长度或摘要。
 
 ## 实施原则
 
-- 保持单机部署简单：构建并推送镜像，SSH 到固定应用目录，更新仅包含镜像引用的部署 env，然后执行 `docker compose pull` 与 `docker compose up -d --remove-orphans`。
+- 保持单机部署简单：切换前用候选部署 env 预拉取镜像，有限重试成功后再切换引用，并用 `docker compose up -d --pull never --remove-orphans` 启动，避免 `pull_policy: always` 重复访问仓库。首次失败不能把初始化占位镜像当作旧版本回滚，细节见部署参考。
 - 多镜像可使用 matrix，但当构建参数、缓存或依赖差异较大时，可拆分 job 以保持清晰。
 - 遵循仓库现有 action 版本固定策略；若仓库没有约定，使用官方 action 的受支持主版本，并在安全要求较高时固定完整 commit SHA。
 - 不直接照抄参考项目中的项目名、域名、目录、镜像、服务数量或 Secrets 名称。
+
+## 首次配置自动化
+
+首次配置脚本与 `.env.example` 应遵守以下边界；具体实现要求见 [首次配置 SSH 凭据](references/ssh-setup.md)：
+
+- 从目标项目名推导有语义的默认部署用户（例如 `<slug>-deploy`）和应用目录，同时允许通过 `.env` 覆盖；不要无理由统一硬编码为 `deploy`。
+- `.env.example` 只提供安全默认值和空凭据字段，真实 `.env` 必须被 Git 忽略并建议权限为 `600`；不得写死真实服务器 IP、域名、token 或密码。
+- 提供 `--check`、`--dry-run` 或等价只读入口，先验证必需配置、工具、GitHub 仓库权限、SSH 连通性、Docker 与目标 external network，再允许外部写操作。
+- 密钥生成必须幂等：保存到明确、权限受限且 Git 忽略的位置，完整密钥对存在时复用，只有单边文件存在时停止；不得在日志中输出私钥。
+- 自动核验的主机公钥必须同时来自既有可信 SSH 通道与 `ssh-keyscan`，比较指纹一致后才能写入 GitHub；不能把扫描结果直接当作可信事实。
+- 使用 `gh` 创建或更新 GitHub Environment、Secrets 与 Variables；registry 密码通过标准输入传给 `gh secret set` 和远端 `docker login --password-stdin`，不得出现在命令参数或日志里。
+- 上传到 VPS 的部署元数据不得包含本地初始化密码。应用运行密钥保留在独立的服务器 env 文件中，不与 CI/CD 配置混用。
+- 用户指定本地应用 env 作为来源时，首次自动上传为服务器运行 env；已有配置默认保留，显式更新需备份并原子替换。具体传输与验证要求见 SSH 配置参考，不要求用户在服务器重复填写同一份配置。
+- 初始化脚本不得自动创建 tag、push 或启动生产服务，除非用户明确授权这些外部动作。
 
 ## 验证与交付
 
@@ -60,5 +79,6 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 4. 检查 workflow 中引用的 Dockerfile、context、部署脚本和打包文件全部存在。
 5. 对照文档核对每个 `${{ vars.* }}` 与 `${{ secrets.* }}` 都有配置说明。
 6. 若无法连接真实服务器，在交付中明确说明未验证的边界以及首次发布前应执行的 dry-run/preflight。
+7. 对初始化脚本运行语法检查，并验证示例 env 可加载、真实 env/密钥目录已被 Git 忽略、脚本的只读模式不会执行 SSH/GitHub/registry 写操作。
 
 最终说明创建或修改了哪些文件、用户需要配置哪些 Variables/Secrets、如何首次触发和如何回滚。不要把“YAML 可解析”等同于真实部署成功。

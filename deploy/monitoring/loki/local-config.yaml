@@ -37,14 +37,18 @@ schema_config:
         prefix: index_
         period: 24h
 
-ruler:
-  alertmanager_url: http://localhost:9093
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
 
 # Retain logs for 7 days by default. Adjust according to disk budget.
 limits_config:
   retention_period: 168h
   reject_old_samples: true
   reject_old_samples_max_age: 168h
+  ingestion_rate_mb: 2
+  ingestion_burst_size_mb: 4
 
 analytics:
   reporting_enabled: false

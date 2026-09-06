@@ -11,11 +11,5 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  - job_name: "vector"
-    static_configs:
-      - targets: ["vector:8686"]
-
-  - job_name: "zata-codes-template-backend"
-    static_configs:
-      - targets: ["zata-codes-template-backend:8000"]
-    metrics_path: /metrics
+  # 主机指标由各服务器 Vector 通过 remote_write 推送。
+  # 应用指标需按实际部署另行配置，不能保留模板项目抓取地址。

@@ -1,0 +1,36 @@
+{
+  "uid": "host-overview",
+  "title": "主机概览",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "title": "CPU 使用率", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"refId": "A", "expr": "100 * (1 - avg by (node) (rate(host_cpu_seconds_total{mode=\"idle\"}[5m])))", "legendFormat": "{{node}}"}],
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []}
+    },
+    {
+      "id": 2, "title": "内存使用率", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"refId": "A", "expr": "100 * (1 - host_memory_available_bytes / host_memory_total_bytes)", "legendFormat": "{{node}}"}],
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []}
+    },
+    {
+      "id": 3, "title": "一分钟负载", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"refId": "A", "expr": "host_load1", "legendFormat": "{{node}}"}]
+    },
+    {
+      "id": 4, "title": "磁盘读取速率", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"refId": "A", "expr": "sum by (node) (rate(host_disk_read_bytes_total[5m]))", "legendFormat": "{{node}}"}],
+      "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []}
+    }
+  ]
+}

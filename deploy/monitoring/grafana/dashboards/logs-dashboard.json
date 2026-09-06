@@ -36,7 +36,7 @@
             "type": "loki",
             "uid": "${datasource}"
           },
-          "expr": "{service_name=\"zata-codes-template-backend\"} |= \"$request_id\"",
+          "expr": "{node=~\".+\"} |= \"$request_id\"",
           "refId": "A"
         }
       ],

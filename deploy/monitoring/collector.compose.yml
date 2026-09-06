@@ -1,0 +1,27 @@
+# 将本文件、vector/vector.yaml 和采集器 .env 上传到应用服务器。
+services:
+  vector:
+    image: timberio/vector:0.58.0-debian
+    restart: unless-stopped
+    command: ["--config", "/etc/vector/vector.yaml"]
+    env_file: .env
+    environment:
+      # 仅允许可信管理员提供 .env，不接受应用日志或请求作为配置。
+      VECTOR_DANGEROUSLY_ALLOW_ENV_VAR_INTERPOLATION: "true"
+      PROCFS_ROOT: /host/proc
+      SYSFS_ROOT: /host/sys
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - vector-data:/var/lib/vector
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    mem_limit: 192m
+    cpus: 0.25
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  vector-data:
