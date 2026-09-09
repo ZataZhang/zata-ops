@@ -209,7 +209,7 @@ gh variable set APP_DIR --env production --body "$DEPLOY_APP_DIR"
 
 ## 6. 清理与首次验证
 
-确认 GitHub Secrets 保存成功后，用户应把临时私钥移入受保护的密码管理/密钥存储，或安全删除临时目录。代理不得未经明确授权删除密钥文件。
+确认 GitHub Secrets 保存成功后，本地私钥副本有两种受支持的处置：移入受保护的密码管理/密钥存储；或选择 CI-only 模式，不再保留本地副本（见下节）。代理不得未经明确授权删除密钥文件。
 
 首次运行 workflow 前，检查 workflow 使用：
 
@@ -231,6 +231,22 @@ docker compose ps
 docker compose logs --tail 100
 ```
 
+## 私钥丢失与 CI-only 密钥
+
+部署私钥的正本在 GitHub Environment Secret（`SSH_PRIVATE_KEY`）。允许——并且对同时维护多个项目的用户往往更合理——不在本地保留副本（CI-only 模式）。两个直接后果要向用户说明：
+
+- GitHub Secret 只能写入、不能读出。本地副本丢弃后无法找回，但 workflow 不受影响，CI 照常发布。
+- 需要以部署用户身份在服务器执行人工操作（例如切换镜像仓库后 `docker login`）时，本地没有私钥可登，应通过可信管理员 SSH 通道（root 或免密 sudo 的账号）以部署用户身份代为执行：
+
+```bash
+printf '%s' "$REGISTRY_PASSWORD" | ssh -o BatchMode=yes <admin>@<host> \
+  "sudo -H -u <deploy-user> docker login <registry-host> --username <user> --password-stdin"
+```
+
+凭据写入部署用户自己的 `~/.docker/config.json`，后续 `docker compose pull` 读取的就是它；不要把登录做在 root 或管理员名下。切换镜像仓库的完整清单见[部署模式与实现要求](deployment-patterns.md)。
+
+"缺一半密钥对必须停止"的规则在 CI-only 模式下同样适用：本地只剩公钥或什么都不剩时，重跑初始化脚本不会静默生成新密钥，恢复的唯一路径是显式轮换（见下节）。仅本地丢失而未怀疑泄露时无需紧急吊销；怀疑私钥被他人获取时先按吊销流程处理。
+
 ## 吊销与轮换
 
-需要吊销时，从 VPS 部署用户的 `authorized_keys` 删除对应公钥，并删除或更新 GitHub 中的 `SSH_PRIVATE_KEY`。轮换时生成全新密钥对，先并行加入新公钥并验证 workflow，再移除旧公钥，避免发布中断。
+需要吊销时，从 VPS 部署用户的 `authorized_keys` 删除对应公钥，并删除或更新 GitHub 中的 `SSH_PRIVATE_KEY`。轮换时生成全新密钥对，先并行加入新公钥并验证 workflow，再移除旧公钥，避免发布中断。整个流程只依赖可信管理员 SSH 通道，不要求旧私钥仍然可用——CI-only 模式下私钥本地丢失后的补发走的就是这条路。

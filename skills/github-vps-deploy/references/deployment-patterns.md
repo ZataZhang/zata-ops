@@ -92,6 +92,25 @@ setup script 应提供只读预检，且不能顺便创建 tag、push 或启动�
 - 镜像预拉取可采用最多 3 次、间隔 5 秒等有限重试；耗尽则保留当前配置并退出非零。鉴权拒绝、镜像不存在等确定性失败应定位配置，不靠无限重跑解决。
 - 显式 `pull` 成功后，`up` 仍可能因 `pull_policy: always` 再次访问仓库。发布脚本通过 `up --pull never` 使用预拉取的不可变镜像；缺失镜像应明确失败，而不是悄悄改用其他版本。
 
+## 切换镜像仓库
+
+更换 registry 时有三处状态要按顺序改齐，漏掉任何一处都会让发布卡在中途：
+
+1. GitHub Environment：更新 `REGISTRY_HOST`（Variable）与 `REGISTRY_USERNAME`、`REGISTRY_PASSWORD`（Secret）。同时在 registry 控制台确认目标命名空间已存在——命名空间缺失会让构建成功后推送被拒，重跑虽便宜但多等一轮。
+2. 服务器拉取凭据：触发发布前，部署用户必须先登录新仓库，否则 `docker compose pull` 直接失败。本地没有部署私钥（CI-only 或已丢失）时，通过可信管理员通道以部署用户身份执行：
+
+   ```bash
+   printf '%s' "$REGISTRY_PASSWORD" | ssh -o BatchMode=yes <admin>@<host> \
+     "sudo -H -u <deploy-user> docker login <new-registry-host> --username <user> --password-stdin"
+   ```
+
+3. 触发发布：workflow 以新 `REGISTRY_HOST` 更新服务器 `.env` 中的镜像引用并预拉取；构建通常命中缓存，验证重点在推送与服务器拉取两个阶段。
+
+验证与收尾：
+
+- 不要用 `docker system info | grep Username` 判断登录状态，Docker 29 起不再输出该字段；直接以部署用户 `docker pull` 一个真实镜像，或看发布 run 的拉取阶段是否通过。
+- 完成切换后以部署用户对旧仓库执行 `docker logout <old-registry-host>`，并为迁移过程中暴露过的密码安排轮换。
+
 ## 首次发布与回滚边界
 
 - 初始化占位 tag 只用于配置渲染，不代表存在可运行的旧版本。切换前记录是否有真实旧发布；首次发布失败时恢复配置并报告可能残留的容器，不去拉取占位镜像，也不自动删除数据卷。

@@ -63,6 +63,7 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 - `.env.example` 只提供安全默认值和空凭据字段，真实 `.env` 必须被 Git 忽略并建议权限为 `600`；不得写死真实服务器 IP、域名、token 或密码。
 - 提供 `--check`、`--dry-run` 或等价只读入口，先验证必需配置、工具、GitHub 仓库权限、SSH 连通性、Docker 与目标 external network，再允许外部写操作。
 - 密钥生成必须幂等：保存到明确、权限受限且 Git 忽略的位置，完整密钥对存在时复用，只有单边文件存在时停止；不得在日志中输出私钥。
+- 密钥可以只在 GitHub Secret 保留正本、本地不留副本（CI-only），适合同时维护多个项目的用户；此模式下以部署用户执行的人工操作通过管理员 SSH 加 `sudo -H -u` 代为完成，后果与恢复路径见 [首次配置 SSH 凭据](references/ssh-setup.md)。
 - 自动核验的主机公钥必须同时来自既有可信 SSH 通道与 `ssh-keyscan`，比较指纹一致后才能写入 GitHub；不能把扫描结果直接当作可信事实。
 - 使用 `gh` 创建或更新 GitHub Environment、Secrets 与 Variables；registry 密码通过标准输入传给 `gh secret set` 和远端 `docker login --password-stdin`，不得出现在命令参数或日志里。
 - 上传到 VPS 的部署元数据不得包含本地初始化密码。应用运行密钥保留在独立的服务器 env 文件中，不与 CI/CD 配置混用。
