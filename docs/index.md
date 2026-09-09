@@ -23,3 +23,5 @@ zata-ops --version
 Read the [Backup & Restore guide](guides/backup-and-restore.md), the
 [Scheduling examples](guides/scheduling.md), or the
 [VPS provisioning guide](guides/vps-provisioning.md) to get started.
+
+在 VPS 上运行 GitHub Actions，参见 [Self-hosted Runner 安装与维护](guides/github-actions-runner.md)。
