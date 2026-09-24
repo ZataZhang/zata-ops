@@ -19,6 +19,12 @@ import 'justfile.shared'
 run arg1="" arg2="" arg3="" arg4="" arg5="" arg6="": _check-completion
     #!/usr/bin/env bash
     set -euo pipefail
+    # 进程数上限守护，兜住构建工具 fork 失控（背景与开关见脚本内注释）
+    process_guard_script="{{justfile_directory()}}/scripts/shared/just/process_guard.sh"
+    if [ -f "$process_guard_script" ]; then
+        source "$process_guard_script"
+        apply_process_limit_guard
+    fi
 
     target="all"
     backend_port=""
@@ -367,20 +373,45 @@ frontend action="dev":
 
 # ── Local Testing Middleware ──────────────────────────────────────────────────
 
-# Manage the local testing middleware stack (docker-compose.testing.yml).
+# Manage the local testing middleware stack (local/docker-compose.testing.yml).
+# The special target `e2b` routes to the local E2B sandbox stack
+# (local/e2b-embed/, a Lima VM with its own manager script).
 # Usage:
 #   just testing                     # show running services (no side effects)
 #   just testing up                  # apply compose changes / start all
 #   just testing up ragflow          # apply / start a single service
+#   just testing logs ragflow        # follow a service's logs
 #   just testing restart ragflow     # restart a service without rebuilding
 #   just testing recreate ragflow    # force-recreate (picks up new image)
 #   just testing recreate            # force-recreate all services
 #   just testing down                # stop and remove the stack
+#   just testing up e2b              # start the E2B VM + stack (no application env)
+#   just testing ps e2b              # E2B VM + stack status
+#   just testing logs e2b            # follow the E2B stack logs
+#   just testing down e2b            # stop the E2B VM (keeps data, frees 12 GiB)
 testing action="ps" service="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{justfile_directory()}}
-    compose_file="docker-compose.testing.yml"
+    compose_file="local/docker-compose.testing.yml"
+
+    if [ "{{service}}" = "e2b" ]; then
+        case "{{action}}" in
+            ps|status) exec ./scripts/e2b_embed.sh status ;;
+            up)        exec ./scripts/e2b_embed.sh up ;;
+            logs)      exec ./scripts/e2b_embed.sh logs ;;
+            # `down` maps to the script's `stop` on purpose: the stack lives in the
+            # VM, and stopping the VM stops the stack too while keeping all data.
+            # Use ./scripts/e2b_embed.sh down directly when only the compose stack
+            # should stop (the VM stays up for `down -v` / host-teardown).
+            down)      exec ./scripts/e2b_embed.sh stop ;;
+            *)
+                echo "ERROR: e2b supports ps/status, up, logs, down only" >&2
+                echo "       To restart it: just testing down e2b && just testing up e2b" >&2
+                exit 1
+                ;;
+        esac
+    fi
 
     case "{{action}}" in
         ps)
@@ -393,6 +424,13 @@ testing action="ps" service="":
             else
                 echo "Starting all services from $compose_file"
                 docker compose -f "$compose_file" up -d
+            fi
+            ;;
+        logs)
+            if [ -n "{{service}}" ]; then
+                docker compose -f "$compose_file" logs --follow --tail=100 "{{service}}"
+            else
+                docker compose -f "$compose_file" logs --follow --tail=100
             fi
             ;;
         restart)
@@ -419,7 +457,7 @@ testing action="ps" service="":
             ;;
         *)
             echo "ERROR: Unknown testing action: {{action}}"
-            echo "Usage: just testing [ps|up|restart|recreate|down] [service]"
+            echo "Usage: just testing [ps|up|logs|restart|recreate|down] [service|e2b]"
             exit 1
             ;;
     esac

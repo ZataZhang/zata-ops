@@ -42,6 +42,7 @@ nav:
       - VPS 初始化: guides/vps-provisioning.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md
+      - 本地 E2B Embed 沙箱: guides/e2b-embed.md
   - 系统架构:
       - 系统设计: architecture/system-design.md
       - 监控栈: architecture/monitoring-stack.md

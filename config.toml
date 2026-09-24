@@ -44,6 +44,9 @@ project_skip_paths = [
     "services/",
     "infra/",
     "deploy/",
+    "local/",
+    # 已移入 local/；模板根路径同名文件不再参与同步（模板自己那份仅服务模板自身）。
+    "docker-compose.testing.yml",
     "helm/",
     "terraform/",
     "ansible/",

@@ -246,6 +246,19 @@ restore ts:
 
 ---
 
+## 本地栈 `local/`
+
+`local/` 放**只在本机运行、不部署到服务器**的开发与测试栈,目录索引与共同约定见 [`local/README.md`](local/README.md):
+
+| 路径 | 用途 |
+| --- | --- |
+| `local/e2b-embed/` | 本机 E2B Embed 沙箱控制面:在 Lima VM 里运行官方 Embed 栈,给应用提供真实的 Firecracker microVM 沙箱。用法与运维见该目录的 `README.md` 与[本地 E2B Embed 沙箱](docs/guides/e2b-embed.md)。 |
+| `local/docker-compose.testing.yml` | 本机测试中间件:MinIO、Redis、PostgreSQL、MySQL、Qdrant、RAGflow、Jaeger、沙箱出网代理等,模拟外部服务供本地开发/测试。用 `just testing`(`ps` / `up` / `logs` / `restart` / `recreate` / `down`,可带服务名;`e2b` 是管 E2B 栈的特殊目标)管理;固定 Compose 项目名 `zata-ops`,卷名前缀不随文件位置变化。 |
+
+两套栈都只为本地开发/测试服务,凭据是明文测试值,不要用于生产。
+
+---
+
 ## 开发
 
 在 zata-ops 仓库根目录下:

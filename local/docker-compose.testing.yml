@@ -5,8 +5,8 @@
 # 仅用于本地开发和测试，密码明文写入，不要用于生产环境。
 #
 # Usage:
-#   docker compose -f docker-compose.testing.yml up -d
-#   docker compose -f docker-compose.testing.yml down
+#   docker compose -f local/docker-compose.testing.yml up -d    # 或 just testing up
+#   docker compose -f local/docker-compose.testing.yml down
 #
 # Connection strings for .env:
 #   DATABASE_URL=postgresql+psycopg2://testuser:testpass@localhost:5432/testdb
@@ -19,9 +19,17 @@
 #   QDRANT_URL=http://localhost:6333
 #   RAGFLOW_BASE_URL=http://localhost:9380
 #   RAGFLOW_API_KEY=test-ragflow-key
+#   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
 #
 # MinIO 启动后需手动创建 bucket（Console: http://localhost:9001，minioadmin/minioadmin）
+# Jaeger Web UI: http://localhost:16686（Run / agent tracing 的本地 OTLP 接收端）
+# 沙箱出站代理：下游项目 config.toml 的 [sandbox_agent.egress] 指向 sandbox-egress-proxy
+# 服务，详见该服务注释与 deploy/sandbox/egress-proxy/squid.conf
 # -----------------------------------------------------------------------------
+
+# 固定 Compose 项目名。默认项目名取自 compose 文件所在目录，本文件在 local/ 下，
+# 不固定就会变成 local，卷名前缀随之改变，现有的 zata-ops_* 卷会像"丢失"一样被换掉。
+name: zata-ops
 
 
 services:
@@ -173,6 +181,51 @@ services:
       - ragflow-test-data:/ragflow/data
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Jaeger — OTLP Trace 接收端（Run / agent tracing）
+  # ---------------------------------------------------------------------------
+  # 模板项目的 Run 执行轨迹经 OTLP/HTTP 导出（OTEL_EXPORTER_OTLP_TRACES_ENDPOINT），
+  # 生产指向阿里云 ARMS；本地开发指向本服务，无需云端依赖。
+  # 内存存储，容器重启即清空——本地排障够用，不要当持久后端。
+  # Web UI: http://localhost:16686
+  # OTLP HTTP: http://localhost:4318/v1/traces（gRPC: localhost:4317）
+  # ---------------------------------------------------------------------------
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0
+    container_name: test-jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Squid — 沙箱出站代理（docker 档沙箱 allowlist 出网模式）
+  # ---------------------------------------------------------------------------
+  # 与 zata_code_template 的 deploy/sandbox/docker-compose.sandbox.yml 同源。容器名与
+  # 网络名刻意不用 test-* 前缀，保持与模板默认配置一致——下游项目 config.toml 写
+  #   proxy_url    = "http://zata-sandbox-egress-proxy:3128"
+  #   network_name = "zata-sandbox-egress"
+  # 即可指向本服务。本服务与项目仓库内的 sandbox overlay 二选一，不要同时启动
+  # （同名网络会冲突）。
+  # 放行清单是安全边界，见 deploy/sandbox/egress-proxy/squid.conf（与模板同源）。
+  # 出站审计日志：docker exec zata-sandbox-egress-proxy cat /var/log/squid/access.log
+  # ---------------------------------------------------------------------------
+  sandbox-egress-proxy:
+    image: ubuntu/squid:latest
+    container_name: zata-sandbox-egress-proxy
+    restart: unless-stopped
+    volumes:
+      # 相对路径按 compose 文件所在目录解析；本文件在 local/ 下，../ 才是仓库根。
+      - ../deploy/sandbox/egress-proxy/squid.conf:/etc/squid/squid.conf:ro
+      # 出站访问日志是审计凭据；squid 以 proxy 用户运行、写不了 /dev/stdout，
+      # 因此落到卷里。
+      - sandbox-egress-logs:/var/log/squid
+    networks:
+      # 同时接内部网络（收沙箱流量）与默认网络（出站到放行域名）。
+      - sandbox-egress
+      - default
+
 volumes:
   minio-test-data:
   postgres-test-data:
@@ -181,3 +234,14 @@ volumes:
   ragflow-test-data:
   mysql-test-data:
   infinity-test-data:
+  sandbox-egress-logs:
+
+networks:
+  sandbox-egress:
+    name: zata-sandbox-egress
+    # internal 让沙箱容器无法直连外网，只能经代理出站。
+    # 这是"按域名放行"能成立的前提，不是可选优化。
+    internal: true
+    # 刻意不指定 subnet：宿主上通常已有多个 Docker 项目，固定网段会与它们冲突。
+    # 由 Docker 自动分配，squid 侧用私有网段 ACL 兜底即可——网络本身是 internal，
+    # 可达性已经受限。
