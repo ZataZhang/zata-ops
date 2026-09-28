@@ -19,6 +19,7 @@ from rich.table import Table
 
 from zata_ops.config import OpsSettings, load_settings
 from zata_ops.db import _backup_impl, _restore_impl
+from zata_ops.db._migrate_cli import _register_migrate_command
 from zata_ops.db._s3 import S3Client, build_backup_plan
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -363,47 +364,6 @@ def check_command(
     console.print("[green]S3 connectivity OK.[/green]")
 
 
-@app.command("migrate")
-def migrate_command(
-    source_db_url: str = typer.Option(..., help="Source PostgreSQL URL (pg_dump)."),
-    target_db_url: str = typer.Option(..., help="Target PostgreSQL URL (psql)."),
-    work_dir: Optional[str] = typer.Option(None, help="Local scratch directory."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan and exit."),
-) -> None:
-    """Migrate PostgreSQL data from one database to another.
-
-    This is NOT an Alembic schema migration. It runs ``pg_dump`` on the
-    source URL, then pipes the dump into ``psql`` on the target URL. Use it
-    to copy data between environments (e.g. staging -> a fresh test DB).
-    """
-    project_settings = _settings_or_die()
-    effective_work_dir_path = Path(_resolve(work_dir, project_settings.work_dir))
-    effective_work_dir_path.mkdir(parents=True, exist_ok=True)
-    migration_dump_path = effective_work_dir_path / "migrate.sql.gz"
-
-    if dry_run:
-        console.print("[bold green]zata-ops db migrate --dry-run[/bold green]")
-        console.print_json(
-            json.dumps(
-                {
-                    "source_db_url": _redact_db_url(source_db_url),
-                    "target_db_url": _redact_db_url(target_db_url),
-                    "intermediate_dump": str(migration_dump_path),
-                    "note": "Data migration only — not Alembic schema migration.",
-                }
-            )
-        )
-        return
-
-    from zata_ops.db._database import backup_database, restore_database
-
-    console.print(f"[cyan]Dumping[/cyan] {_redact_db_url(source_db_url)}")
-    backup_database(source_db_url, migration_dump_path)
-    console.print(f"[cyan]Restoring[/cyan] into {_redact_db_url(target_db_url)}")
-    restore_database(target_db_url, migration_dump_path)
-    console.print("[green]Migration complete.[/green]")
-
-
 def _redact_db_url(db_url: str) -> str:
     """Redact the password from a database URL for safe display.
 
@@ -429,3 +389,6 @@ def _redact_db_url(db_url: str) -> str:
         )
         return urlunparse(parsed_db_url._replace(netloc=safe_netloc))
     return db_url
+
+
+_register_migrate_command(app)

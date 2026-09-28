@@ -37,7 +37,7 @@ nav:
   - 首页: index.md
   - 快速开始: getting-started.md
   - 使用指南:
-      - 备份与恢复: guides/backup-and-restore.md
+      - 备份、恢复与迁移: guides/backup-and-restore.md
       - 调度示例: guides/scheduling.md
       - VPS 初始化: guides/vps-provisioning.md
       - GitHub Actions Runner: guides/github-actions-runner.md

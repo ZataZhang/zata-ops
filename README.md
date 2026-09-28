@@ -95,7 +95,9 @@ zata-ops db restore --from 2026-06-07_180000 --restore-db --yes
 | `zata-ops db list` | 列出 S3 上可用的备份时间点与类型 |
 | `zata-ops db restore --from <时间戳> [--restore-db] [--restore-logs] [--restore-resources] [--yes]` | 从 S3 恢复,支持链式恢复 |
 | `zata-ops db check` | 验证 S3 端点连通性与凭据 |
-| `zata-ops db migrate --source <url> --target <url> [--dry-run]` | 在两个 PostgreSQL 之间迁移数据(非 Alembic) |
+| `zata-ops db migrate --source <url> --target <url> [--dry-run] [--verify-row-counts] [--keep-dump]` | 在两个 PostgreSQL 之间迁移数据(非 Alembic；复制快照) |
+
+迁移前检查、凭据和容器网络路径见[备份与恢复指南](docs/guides/backup-and-restore.md#postgresql-跨机迁移)。
 
 ### VPS 环境 `env`
 

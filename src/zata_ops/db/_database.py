@@ -120,6 +120,7 @@ def _backup_postgres(db_url: str, output_path: Path) -> None:
     parsed_postgres_url = parse_postgres_url(db_url)
     pg_dump_cmd_list: list[str] = [
         "pg_dump",
+        "-w",
         "-h",
         str(parsed_postgres_url["host"]),
         "-p",
@@ -152,6 +153,7 @@ def restore_database(
     db_url: str,
     sql_gz_path: Path,
     sanitize_invalid_utf8: bool = False,
+    require_empty_target: bool = False,
 ) -> None:
     """Restore a database from a gzipped SQL dump.
 
@@ -160,9 +162,16 @@ def restore_database(
         sql_gz_path: Path to the ``database.sql.gz`` file.
         sanitize_invalid_utf8: Replace invalid UTF-8 bytes with the Unicode
             replacement character before piping the dump to PostgreSQL.
+        require_empty_target: Refuse to restore into an existing PostgreSQL
+            database that contains user objects.
+
+    Returns:
+        None.
 
     Raises:
         ValueError: If the database scheme is not supported.
+        RuntimeError: If the target database cannot be inspected or created, or
+            if ``require_empty_target`` is true and user objects already exist.
         subprocess.CalledProcessError: If the restore command fails.
     """
     db_url_lower: str = db_url.lower()
@@ -170,7 +179,10 @@ def restore_database(
         _restore_sqlite(db_url, sql_gz_path)
     elif "postgres" in db_url_lower:
         _restore_postgres(
-            db_url, sql_gz_path, sanitize_invalid_utf8=sanitize_invalid_utf8
+            db_url,
+            sql_gz_path,
+            sanitize_invalid_utf8=sanitize_invalid_utf8,
+            require_empty_target=require_empty_target,
         )
     else:
         raise ValueError(f"Unsupported database scheme: {db_url}")
@@ -187,57 +199,24 @@ def _restore_postgres(
     db_url: str,
     sql_gz_path: Path,
     sanitize_invalid_utf8: bool = False,
+    require_empty_target: bool = False,
 ) -> None:
     """Restore a PostgreSQL database by piping SQL into ``psql``."""
     parsed_postgres_url = parse_postgres_url(db_url)
     runtime_env = _build_psql_env(str(parsed_postgres_url["password"]))
 
-    try:
-        if shutil.which("createdb"):
-            subprocess.run(
-                [
-                    "createdb",
-                    "-h",
-                    str(parsed_postgres_url["host"]),
-                    "-p",
-                    str(parsed_postgres_url["port"]),
-                    "-U",
-                    str(parsed_postgres_url["user"]),
-                    str(parsed_postgres_url["database"]),
-                ],
-                env=runtime_env,
-                capture_output=True,
-                check=True,
-            )
-        else:
-            subprocess.run(
-                [
-                    "psql",
-                    "-b",
-                    "-h",
-                    str(parsed_postgres_url["host"]),
-                    "-p",
-                    str(parsed_postgres_url["port"]),
-                    "-U",
-                    str(parsed_postgres_url["user"]),
-                    "-d",
-                    "postgres",
-                    "-v",
-                    "ON_ERROR_STOP=1",
-                    "-c",
-                    f"CREATE DATABASE {parsed_postgres_url['database']}",
-                ],
-                env=runtime_env,
-                capture_output=True,
-                check=True,
-            )
-    except subprocess.CalledProcessError:
-        pass
+    from zata_ops.db._postgres_migration import prepare_postgres_restore_target
+
+    prepare_postgres_restore_target(
+        db_url,
+        require_empty_target=require_empty_target,
+    )
 
     _pipe_gzip_to_command(
         sql_gz_path,
         [
             "psql",
+            "-w",
             "-b",
             "-v",
             "ON_ERROR_STOP=1",
