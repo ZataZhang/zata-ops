@@ -14,14 +14,9 @@ uv tool install --force /path/to/zata-ops
 zata-ops --version
 ```
 
-需要 SSH 远程操作 VPS(`env provision`、`env fix`)时,加上 `ssh` 扩展:
+需要 SSH 远程操作 VPS 或使用 `tunnel` 时，确保本机安装并配置了系统 `ssh` 命令。
 
-```bash
-uv tool install --force '/path/to/zata-ops[ssh]'
-```
-
-`[ssh]` extra 同时也是 `tunnel` 子命令的依赖(paramiko),一并安装后
-可以本地用 `tunnel open` 建立 SSH 端口转发。
+仓库内的 [zata-ops 运维 Skill](skills/zata-ops-operations/SKILL.md) 可按任务引导使用隧道、数据库、日志及 VPS 命令。
 
 升级到新版本:
 
@@ -142,60 +137,21 @@ zata-ops dashboard --mock --project my-app
 
 ### SSH 端口转发 `tunnel`
 
-需要先安装 `[ssh]` extra(见上)。`--direction local` 对应 `ssh -L`,
-`--direction remote` 对应 `ssh -R`。**不传任何 flag 时会进入交互表单
-(arrow keys 选择方向,逐项填入参数)**;传了 flag 就用 flag,不走表单。
+`tunnel` 在后台启动系统 `ssh`，并按名称管理进程。`--` 后直接传入完整
+`ssh` 参数；本地转发用 `-L`，远端转发用 `-R`。
 
 ```bash
-# 交互模式(推荐,适合快速验证)
-zata-ops tunnel open
-
-# 先看 plan,不真正连接
-zata-ops tunnel open \
-    --direction local \
-    --ssh-host bastion.example.com \
-    --bind-port 19000 \
-    --target-port 5432 \
-    --dry-run
-
-# 前台:把远端 5432 映射到本地 19000,Ctrl+C 关闭
-zata-ops tunnel open \
-    --direction local \
-    --ssh-host bastion.example.com \
-    --bind-port 19000 \
-    --target-port 5432
-
-# 后台:守护到后台,用 list/close 管理
-zata-ops tunnel open \
-    --direction local \
-    --ssh-host bastion.example.com \
-    --bind-port 19000 \
-    --target-port 5432 \
-    --background \
-    --name db-access
+# 后台把远端 PostgreSQL 映射到本机 19000
+zata-ops tunnel open db-access -- \
+    ssh -N -L 127.0.0.1:19000:127.0.0.1:5432 user@bastion.example.com
 zata-ops tunnel list
 zata-ops tunnel status db-access
 zata-ops tunnel close db-access
-
-# 断线自动重连(指数退避 1s→30s,后台 + 长期任务推荐开)
-zata-ops tunnel open \
-    --direction local \
-    --ssh-host bastion.example.com \
-    --bind-port 19000 \
-    --target-port 5432 \
-    --reconnect
-# 限最多 5 次:
-zata-ops tunnel open ... --reconnect --max-reconnect 5
-
-# 密码鉴权(前台专用,后台模式拒绝;推荐改用 ssh-add)
-zata-ops tunnel open \
-    --direction local \
-    --ssh-host 47.101.71.219 --ssh-user root \
-    --bind-port 19000 --target-port 5432 \
-    --ssh-password
 ```
 
-详细参数与常见问题见 [SSH 隧道指南](guides/tunnel.md)。
+`open` 立即返回，不代表数据库已可登录；请另用数据库客户端验证本机
+`127.0.0.1:19000`。需要前台运行或自动重连时直接使用 `ssh` / `autossh`。
+详细说明见 [SSH 隧道指南](docs/guides/tunnel.md)。
 
 ---
 

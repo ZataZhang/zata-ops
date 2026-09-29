@@ -22,7 +22,7 @@ macOS 宿主（Apple Silicon）
     └─ limactl shell -- sudo   manage.sh <action> <runtime-commit>
          │
          ▼
-  Lima VM（Ubuntu 26.04 arm64，vz + 嵌套虚拟化，8 vCPU / 12 GiB / 40 GiB）
+  Lima VM（Ubuntu 26.04 arm64，vz + 嵌套虚拟化，8 vCPU / 12 GiB / 64 GiB）
     /var/lib/zata-ops/e2b-embed/     安装目录：compose.yaml、.env、.env.local、
                                      runtime.commit、compose.override.yaml
     docker compose 项目「e2b」       api / orchestrator（Firecracker）/ client-proxy /
@@ -46,7 +46,7 @@ macOS 宿主（Apple Silicon）
 
 | 文件 | 角色 |
 | --- | --- |
-| `lima.yaml` | Lima VM 定义：Ubuntu 26.04 ARM64、`vz` + 嵌套虚拟化、8 vCPU / 12 GiB / 40 GiB，首次启动安装 Docker；只把 3000/3001/3002 固定转发到宿主 `127.0.0.1`。 |
+| `lima.yaml` | Lima VM 定义：Ubuntu 26.04 ARM64、`vz` + 嵌套虚拟化、8 vCPU / 12 GiB / 64 GiB，首次启动安装 Docker；只把 3000/3001/3002 固定转发到宿主 `127.0.0.1`。 |
 | `compose.yaml` | E2B Embed 栈定义（Compose 项目名 `e2b`），来自官方 `e2b-dev/runtime` 的 `embed/compose`，zata-ops 审阅并持有；与上游同一提交逐字节一致，差异只有文件头的来源注释。 |
 | `e2b-embed.env.example` | 镜像与运行时版本清单，安装时在 VM 内落成 `.env`；同样与上游一致，仅多两行来源注释。 |
 | `manage.sh` | 在 VM 内以 root 运行的管理器（`up` / `down` / `status` / `logs` / `sdk-env`）：安装清单、写 Docker 代理、生成 Compose override、驱动 `docker compose`。 |
@@ -57,13 +57,15 @@ macOS 宿主（Apple Silicon）
 | --- | --- |
 | `scripts/e2b_embed.sh` | 宿主入口：起 VM、检查 `/dev/kvm` 与 `/dev/net/tun`、复制清单、调用 `manage.sh`；用法即 `./scripts/e2b_embed.sh <action>`。其中的 `runtime_commit` 同时是安装闸门。 |
 | `scripts/e2b_embed_configure.py` | 把官方 SDK 导出值（`E2B_API_KEY` 等）写入应用的 `.env.local`，权限 0600，不打印 key。 |
+| `scripts/build_e2b_embed_app_template.py` | 从应用的模板 Dockerfile 构建本机架构模板；在临时沙箱验证目录、依赖和运行用户。 |
 | `docs/guides/e2b-embed.md` | 面向使用者的 MkDocs 指南（启动、连接应用、日常命令）。 |
 
 ## 环境要求
 
 - Apple Silicon Mac、macOS 15 或更高，支持嵌套虚拟化（官方要求 M3 或更新）。
 - Lima 2.0 或更高：`brew install lima`。
-- 宿主机至少 12 GiB 可用内存、20 GiB 可用磁盘（VM 固定占用 12 GiB / 40 GiB）。
+- 传入应用 env 路径并自动构建模板时，宿主机需安装 `uv`：`brew install uv`，应用仓库需包含 `deploy/sandbox/Dockerfile.e2b-template`。
+- 宿主机至少 12 GiB 可用内存、20 GiB 可用磁盘（VM 配置 12 GiB 内存、64 GiB 磁盘上限）。
 - 首次启动需要从 Docker Hub、Google Artifact Registry 拉取容器镜像，并从 GitHub 拉取
   Firecracker 资源；受限网络见「代理」一节。
 - 只能在 macOS 上由本包驱动；Intel Mac、或在虚拟机里套虚拟机都会在启动前被拒绝。
@@ -87,7 +89,9 @@ macOS 宿主（Apple Silicon）
 4. 以 root 在 VM 内执行 `manage.sh up <runtime-commit>`：写 Docker 守护进程代理、
    安装清单到 `/var/lib/zata-ops/e2b-embed/`、生成 `compose.override.yaml`，
    然后 `docker compose up -d --wait` 等整条流水线跑完（见「启动流水线」）。
-5. 从 `ready` 服务取 SDK 变量，写进应用的 `.env.local`（见「SDK 变量与应用接入」）。
+5. 若传入应用 env 路径，从 `ready` 服务取 SDK 变量，用应用模板 Dockerfile 构建 ARM64
+   本地模板，再把 SDK 变量和模板别名写进应用的 `.env.local`
+   （见「SDK 变量与应用接入」）。
 
 日常命令：
 
@@ -205,10 +209,11 @@ curl -H "E2b-Sandbox-Id: $SANDBOX_ID" -H "E2b-Sandbox-Port: 8080" http://127.0.0
 ## SDK 变量与应用接入
 
 `ready` 服务把本安装的四个变量渲染进 `seed-state:/run/e2b/sdk.env`，并在 key 轮换后
-重新渲染。`./scripts/e2b_embed.sh up <env-file>` 会自动读取并写入应用的 env 文件：
+重新渲染。`./scripts/e2b_embed.sh up <env-file>` 会确保应用模板存在，再把连接设置写入
+应用的 env 文件：
 
 - `SANDBOX_AGENT_PROVIDER=e2b`
-- `E2B_TEMPLATE_ID=base`
+- `E2B_TEMPLATE_ID=<按本机模板定义生成的别名>`
 - `E2B_API_KEY`（本安装的团队 key，写入后权限 0600，不打印）
 - `E2B_API_URL=http://127.0.0.1:3000`
 - `E2B_SANDBOX_URL=http://127.0.0.1:3002`
@@ -221,8 +226,11 @@ cd /var/lib/zata-ops/e2b-embed
 sudo docker compose --env-file .env --env-file .env.local exec -T ready cat /run/e2b/sdk.env
 ```
 
-已列出的 `base` 模板用于验证控制面、命令执行和文件读写；应用需要额外依赖时，用 E2B
-SDK 的模板构建接口对本地 API 构建新模板，再把 `E2B_TEMPLATE_ID` 换成新模板名。
+云端 `E2B_TEMPLATE_IMAGE` 固定为 `linux/amd64`，而本地 Lima VM 是 ARM64，不能直接复用。
+本地默认通过 E2B Template SDK 解析同一份 `deploy/sandbox/Dockerfile.e2b-template`，由
+Embed 构建 ARM64 模板。构建使用本地 Embed API 与固定版本的 E2B Python SDK `2.32.0`，不修改与上游
+对齐的 Embed Compose 清单。模板别名根据 Dockerfile 内容生成；已有别名会复用，
+并在临时沙箱验证工作目录、输出目录、依赖和非 root 用户。
 
 ## 代理（受限网络）
 

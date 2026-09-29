@@ -1,9 +1,39 @@
 # 在 VPS 上安装 GitHub Actions Self-hosted Runner
 
-本文记录 2026-09-09 为 `ZataZhang/freshai` 安装 runner 的过程，也可作为其他私有仓库的操作模板。
-这是手工运维流程，目前不是 `zata-ops` CLI 子命令。GitHub 负责触发与调度，VPS 执行构建和测试。
+本文记录 2026-09-09 为 `ZataZhang/freshai` 安装 runner 的过程，下面的版本、名称和 Docker 组配置属于该实例。新主机优先使用仓库的 `skills/github-self-hosted-runner/SKILL.md` 判断权限方案，并用其中的 `scripts/bootstrap.sh` 分阶段安装；不要直接复用本文的固定校验值。这仍不是 `zata-ops` CLI 子命令。
+
+GitHub 负责触发与调度，VPS 执行构建和测试。
 
 > 隐私说明：本文使用文档示例 IP `192.0.2.10`，执行命令前请替换为自己的服务器地址。
+
+## 新主机的通用入口
+
+先按 skill 盘点 workflow 和 Docker 权限，再把 `skills/github-self-hosted-runner/scripts/bootstrap.sh` 复制到目标主机。在目标主机的 root shell 设置以下非敏感参数；版本和 SHA-256 从同一个 GitHub runner release 获取：
+
+```bash
+export RUNNER_URL=https://github.com/OWNER/REPOSITORY
+export RUNNER_NAME=project-runner-01
+export RUNNER_LABELS=project-ci
+export RUNNER_VERSION=VERSION
+export RUNNER_SHA256=SHA256_FROM_SAME_RELEASE
+export RUNNER_DIR=/opt/actions-runner
+bash /root/runner-bootstrap.sh prepare
+```
+
+确认依赖安装和 Docker 模式后，安全输入一次性 token 并完成注册：
+
+```bash
+read -r -s -p 'Runner registration token: ' registration_token
+printf '\n'
+printf '%s\n' "$registration_token" | bash /root/runner-bootstrap.sh register
+unset registration_token
+bash /root/runner-bootstrap.sh service
+bash /root/runner-bootstrap.sh status
+```
+
+`service` 只确认主机服务启动；继续到 GitHub 侧核对标签、runner group 和实际 job。脚本不会修改仓库 workflow，也不会自动赋予 Docker 权限。已经注册的 runner 不使用此入口覆盖，先按现状判断迁移办法。
+
+## FreshAI 历史安装记录
 
 ## 已部署实例
 

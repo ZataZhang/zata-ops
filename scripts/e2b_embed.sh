@@ -6,6 +6,7 @@ vm_name="zata-e2b-embed"
 vm_config="$ops_root/local/e2b-embed/lima.yaml"
 guest_manager="$ops_root/local/e2b-embed/manage.sh"
 env_writer="$ops_root/scripts/e2b_embed_configure.py"
+app_template_builder="$ops_root/scripts/build_e2b_embed_app_template.py"
 runtime_commit="0c21aa2277b59a1d040761ed3fbbb29a78775470"
 runtime_source_dir="$ops_root/local/e2b-embed"
 action="${1:-status}"
@@ -40,6 +41,10 @@ run_guest_manager() {
 
 case "$action" in
     up)
+        if [[ -n "$client_env_file" ]] && ! command -v uv >/dev/null 2>&1; then
+            echo "uv is required to build the application E2B template. Install it with: brew install uv" >&2
+            exit 1
+        fi
         start_vm
         for required_device in /dev/kvm /dev/net/tun; do
             if ! limactl shell "$vm_name" -- test -c "$required_device"; then
@@ -60,11 +65,28 @@ case "$action" in
             fi
             client_env_dir="$(cd "$(dirname "$client_env_file")" && pwd -P)"
             client_env_path="$client_env_dir/$(basename "$client_env_file")"
+            for application_env_path in "$client_env_dir/.env" "$client_env_path"; do
+                if [[ -f "$application_env_path" ]]; then
+                    set -a
+                    # shellcheck disable=SC1090
+                    source "$application_env_path"
+                    set +a
+                fi
+            done
             sdk_environment_file="$(mktemp "${TMPDIR:-/tmp}/e2b-sdk-env.XXXXXX")"
             chmod 600 "$sdk_environment_file"
             trap 'rm -f "$sdk_environment_file"' EXIT
             run_guest_manager sdk-env > "$sdk_environment_file"
-            python3 "$env_writer" "$client_env_path" < "$sdk_environment_file"
+            app_template_id="$(
+                set -a
+                # shellcheck disable=SC1090
+                source "$sdk_environment_file"
+                set +a
+                uv run --quiet --no-project --with e2b==2.32.0 python \
+                    "$app_template_builder" "$client_env_dir"
+            )"
+            python3 "$env_writer" "$client_env_path" "$app_template_id" \
+                < "$sdk_environment_file"
             rm -f "$sdk_environment_file"
             trap - EXIT
         else

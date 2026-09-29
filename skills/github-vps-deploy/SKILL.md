@@ -7,6 +7,8 @@ description: 为已有项目创建或改进 GitHub Actions 持续部署流程，
 
 为当前项目生成一条与现有架构匹配、可验证且可回滚的部署链路。所有说明、注释和交付摘要使用中文；GitHub Actions 的键名、命令、变量名及产品专有名词保持英文。
 
+安装或迁移 self-hosted runner 主机时使用 `github-self-hosted-runner` skill；此处负责应用工作流和部署链路。
+
 ## 开始前
 
 1. 读取目标仓库的 `AGENTS.md` 及其要求的规范页。

@@ -18,7 +18,7 @@ description: 使用 zata-ops 处理 SSH 隧道、数据库备份/恢复/跨机�
 | 容器或 systemd 日志 | `src/zata_ops/logs/cli.py` | `logs tail/search` 可先用 `--dry-run` 确认命令；输出可能含业务敏感信息。 |
 | 终端状态面板 | `src/zata_ops/observability/cli.py` | 当前 `dashboard` 使用模拟数据，不能当作真实健康检查。 |
 
-GitHub Actions 发布流程用仓库的 `github-vps-deploy` skill；应用日志和指标接入用 `container-observability-onboard` skill。不要把这两个专项流程复制到本 skill。
+GitHub Actions runner 主机安装和工作流调度适配用 `github-self-hosted-runner` skill；应用发布流程用 `github-vps-deploy` skill；应用日志和指标接入用 `container-observability-onboard` skill。不要把这些专项流程复制到本 skill。
 
 ## SSH 隧道
 

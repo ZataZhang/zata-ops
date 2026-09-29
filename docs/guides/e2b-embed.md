@@ -8,7 +8,8 @@ Firecracker microVM，再使用 E2B client-proxy 和 envd 协议执行命令、�
 
 - Apple Silicon Mac、macOS 15 或更高版本，以及支持嵌套虚拟化的 Apple Virtualization.framework。
 - Lima 2.0 或更高版本：`brew install lima`。
-- 宿主机至少 12 GiB 可用内存和 20 GiB 可用磁盘空间；本 VM 配置为 12 GiB 内存、40 GiB 磁盘。
+- 传入应用 env 路径并自动构建模板时，宿主机需安装 `uv`：`brew install uv`；应用仓库需包含 `deploy/sandbox/Dockerfile.e2b-template`。
+- 宿主机至少 12 GiB 可用内存和 20 GiB 可用磁盘空间；本 VM 配置为 12 GiB 内存、64 GiB 磁盘。
 - 首次启动需要从 Docker Hub 与 Google Artifact Registry 下载容器镜像和 Firecracker 资源。Compose 部署定义和镜像版本清单由 `zata-ops/local/e2b-embed/` 持有。
 
 启动脚本会创建一台 Ubuntu 26.04 ARM64 Lima VM，启用嵌套虚拟化并在 VM 内安装 Docker。E2B
@@ -24,21 +25,24 @@ Embed 的 host setup 会调整该 Linux VM 的 KVM/TUN 设备、huge pages、内
 ./scripts/e2b_embed.sh up ../zata_code_template/.env.local
 ```
 
-首次运行会把仓库内的 `compose.yaml` 和版本配置复制到 Lima VM，再启动 E2B 官方 Compose 栈、创建 `base` 模板，最后将以下设置写入目标 `.env.local`：
+首次运行会把仓库内的 `compose.yaml` 和版本配置复制到 Lima VM，再启动 E2B 官方 Compose 栈并创建 `base` 模板。传入应用 `.env.local` 时，脚本从同一应用仓库的 `deploy/sandbox/Dockerfile.e2b-template` 构建本机架构的应用模板。模板别名由 Dockerfile 内容派生；定义变化会得到新别名，已有别名则复用并做 smoke check。随后脚本把连接配置写入目标文件：
 
 - `SANDBOX_AGENT_PROVIDER=e2b`
 - `E2B_API_KEY`（本机 Embed team key）
 - `E2B_API_URL=http://127.0.0.1:3000`
 - `E2B_SANDBOX_URL=http://127.0.0.1:3002`
-- `E2B_TEMPLATE_ID=base`
+- `E2B_TEMPLATE_ID=<按本机模板定义生成的别名>`
 
 API key 以权限 `0600` 写入 `.env.local`，不会打印到终端。应用的 `config.toml` 只声明环境
 变量名和可覆盖默认值，不存实际密钥。之后正常启动应用后端；后端会对 Embed 控制面执行
 可达性探测，创建沙箱时经本地 API 控制面操作，命令和文件请求则发送至 `3002` 并附带
 E2B 沙箱 ID、envd 端口和 access-token 协议头。
 
-默认 `base` 模板用于验证控制面、命令执行和文件读写。如果应用工作流依赖额外库，需按
-E2B Embed 提供的模板构建方式扩展 `base`，或创建新模板，再将 `E2B_TEMPLATE_ID` 改为模板名。
+默认 `base` 模板用于验证控制面、命令执行和文件读写。云端脚本生成的
+`E2B_TEMPLATE_IMAGE` 固定为 `linux/amd64`；本地 Lima VM 是 ARM64，所以不能直接把这张镜像
+作为本地模板。默认路径通过 E2B Template SDK 解析同一份
+`deploy/sandbox/Dockerfile.e2b-template`，由本地 Embed 在 ARM64 构建虚拟机中生成模板；
+Compose 文件仍保持与上游一致。修改 Dockerfile 后重新运行带应用 env 路径的 `up` 命令会生成新别名并构建新模板。
 
 ## 运维命令
 

@@ -12,17 +12,20 @@ from pathlib import Path
 _SDK_KEYS = ("E2B_API_KEY", "E2B_API_URL", "E2B_SANDBOX_URL")
 _APP_SETTINGS = {
     "SANDBOX_AGENT_PROVIDER": "e2b",
-    "E2B_TEMPLATE_ID": "base",
 }
 
 
 def main() -> int:
     """读取官方 SDK 导出值并原子更新目标环境文件。"""
-    if len(sys.argv) != 2:
-        print("Usage: e2b_embed_configure.py <application-env-file>", file=sys.stderr)
+    if len(sys.argv) != 3 or not sys.argv[2].strip():
+        print(
+            "Usage: e2b_embed_configure.py <application-env-file> <template-id>",
+            file=sys.stderr,
+        )
         return 2
 
     target_path = Path(sys.argv[1])
+    template_id = sys.argv[2].strip()
     sdk_values: dict[str, str] = {}
     for sdk_line in sys.stdin:
         matched_export = re.fullmatch(r"export\s+([A-Z0-9_]+)=(.*)", sdk_line.strip())
@@ -47,7 +50,11 @@ def main() -> int:
         )
         return 1
 
-    merged_values = {**sdk_values, **_APP_SETTINGS}
+    merged_values = {
+        **sdk_values,
+        **_APP_SETTINGS,
+        "E2B_TEMPLATE_ID": template_id,
+    }
     current_text = (
         target_path.read_text(encoding="utf-8") if target_path.exists() else ""
     )
