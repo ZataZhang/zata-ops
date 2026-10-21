@@ -19,6 +19,31 @@ from private_config_backup import create_backup
 SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
 
 
+def credential_status(secret_path: Path) -> dict[str, bool]:
+    """Return configured status by credential name without exposing values.
+
+    Args:
+        secret_path: Private dotenv file.
+
+    Returns:
+        Mapping from valid credential names to whether each value is non-empty.
+
+    Raises:
+        ValueError: The credential file is a symbolic link.
+        OSError: The credential file cannot be read.
+    """
+    if secret_path.is_symlink():
+        raise ValueError("symlink credential file")
+    if not secret_path.exists():
+        return {}
+    stored_credentials = dotenv_values(secret_path, interpolate=False, encoding="utf-8")
+    return {
+        credential_name: bool(credential_value)
+        for credential_name, credential_value in stored_credentials.items()
+        if SECRET_NAME.fullmatch(credential_name)
+    }
+
+
 def read_hidden_secret(prompt: str) -> str:
     """Read a secret without falling back to echoed input.
 
@@ -196,11 +221,8 @@ def main() -> int:
             print("Credential saved; value hidden.")
             return 0
         # Disable dotenv expansion so passwords containing ${...} stay literal.
-        credentials = dotenv_values(secret_path, interpolate=False, encoding="utf-8")
         if arguments.action == "list":
-            credential_names = sorted(
-                name for name in credentials if SECRET_NAME.fullmatch(name)
-            )
+            credential_names = sorted(credential_status(secret_path))
             print(
                 "\n".join(credential_names)
                 if credential_names

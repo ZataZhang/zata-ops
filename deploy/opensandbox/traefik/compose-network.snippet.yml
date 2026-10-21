@@ -1,0 +1,11 @@
+# Merge into the existing Traefik service in docker-compose.yml.
+services:
+  traefik:
+    networks:
+      - traefik
+      - opensandbox-ingress
+
+networks:
+  opensandbox-ingress:
+    name: opensandbox-ingress
+    external: true

@@ -26,7 +26,7 @@ def _read_json_command(command: list[str]) -> dict:
     return json.loads(completed.stdout)
 
 
-def inspect_host() -> list[dict]:
+def inspect_host(data_root: Path = DATA_ROOT) -> list[dict]:
     """Inspect the machine executing this script without pulling or starting images.
 
     Returns:
@@ -62,7 +62,11 @@ def inspect_host() -> list[dict]:
             {"name": "runsc_systrap", "passed": "--platform=systrap" in runtime_args}
         )
         observations.append(
-            {"name": "runsc_network", "passed": "--network=host" in runtime_args}
+            {
+                "name": "runsc_sandbox_network",
+                "passed": "--network=sandbox" in runtime_args
+                and "--network=host" not in runtime_args,
+            }
         )
         observations.append(
             {
@@ -86,26 +90,34 @@ def inspect_host() -> list[dict]:
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
         observations.append({"name": "network_and_context_readable", "passed": False})
     try:
-        mounted = subprocess.run(
-            ["findmnt", "--mountpoint", "/mnt/data", "--noheadings"],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-        observations.append({"name": "data_mount", "passed": mounted.returncode == 0})
         observations.append(
             {
                 "name": "data_disk_20gib",
-                "passed": shutil.disk_usage(DATA_ROOT).free >= 20 * 1024**3,
+                "passed": shutil.disk_usage(data_root).free >= 20 * 1024**3,
             }
         )
         observations.append(
             {
                 "name": "state_directories",
                 "passed": all(
-                    (DATA_ROOT / suffix).is_dir()
+                    (data_root / suffix).is_dir()
                     for suffix in ["control-plane", "workspaces"]
                 ),
+            }
+        )
+        mount_info = subprocess.run(
+            ["findmnt", "-n", "-o", "TARGET", "-T", str(data_root)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=10,
+            check=True,
+        )
+        observations.append(
+            {
+                "name": "data_filesystem",
+                "passed": bool(mount_info.stdout.strip()),
+                "mountpoint": mount_info.stdout.strip(),
             }
         )
         memory_fields = dict(
@@ -152,6 +164,7 @@ def main() -> int:
     parser.add_argument("action", choices=["validate", "preflight"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--env-file", type=Path, required=True)
+    parser.add_argument("--data-root", type=Path, default=DATA_ROOT)
     parser.add_argument(
         "--example",
         action="store_true",
@@ -159,7 +172,12 @@ def main() -> int:
     )
     arguments = parser.parse_args()
     try:
-        load_settings(arguments.config, arguments.env_file, example=arguments.example)
+        load_settings(
+            arguments.config,
+            arguments.env_file,
+            example=arguments.example,
+            data_root=arguments.data_root,
+        )
         if arguments.example and arguments.action != "validate":
             raise ValueError("examples_are_offline_only")
     except (OSError, ValueError):
@@ -186,7 +204,7 @@ def main() -> int:
             )
         )
         return 0
-    observations = inspect_host()
+    observations = inspect_host(arguments.data_root)
     passed = all(observation["passed"] for observation in observations)
     print(
         json.dumps(

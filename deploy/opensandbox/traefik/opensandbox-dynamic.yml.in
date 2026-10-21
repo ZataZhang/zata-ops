@@ -1,0 +1,30 @@
+http:
+  routers:
+    opensandbox-http:
+      entryPoints:
+        - web
+      rule: "Host(`@DOMAIN@`)"
+      middlewares:
+        - opensandbox-https-redirect
+      service: opensandbox-api
+
+    opensandbox-https:
+      entryPoints:
+        - websecure
+      rule: "Host(`@DOMAIN@`)"
+      service: opensandbox-api
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    opensandbox-https-redirect:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  services:
+    opensandbox-api:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://@INGRESS_GATEWAY@:18081"

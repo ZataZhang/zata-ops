@@ -54,6 +54,21 @@ just private-copy-done
 它只记录确认时间到私有的 `.copy-reminder` 文件，不执行复制。
 Agent 只有在用户明确确认已复制后才能代为执行。
 
+## 查看配置总览
+
+从仓库根目录运行：
+
+```bash
+just private-config-show
+```
+
+命令以 JSON 汇总当前 `config/private/` 下的服务器与应用清单、服务元数据、OpenSandbox 配置，
+并列出凭据名称及配置状态。它只读取活动配置，不连接服务器、不修改文件，也不展开历史快照或备份。
+API key、密码、Token 等值会隐藏；自由备注也会省略，以免备注中意外包含凭据。
+OpenSandbox 的 `configuration_valid` 只表示本机文件通过离线校验，不代表远端服务此刻可用。
+
+该总览只覆盖仓库已支持的私有运维配置格式；项目 `.env`、业务应用配置和任意私有文件不在扫描范围内。
+
 ## 字段约定
 
 示例文件是字段模板，`src/zata_ops/inventory.py` 是共享结构约束；校验脚本与应用检查 CLI 复用同一契约。
@@ -75,6 +90,58 @@ Agent 只有在用户明确确认已复制后才能代为执行。
 无已知应用时，在对应 `[[servers]]` 字段中设置 `applications = []`，删除其示例
 `[[servers.applications]]` 表。同一应用部署在多台服务器时，分别登记在各服务器下。
 配置仅记录密钥路径或凭据引用，禁止保存私钥正文。新增、迁移或下线应用时同步维护清单。
+
+## 可读格式与维护流程
+
+服务器清单保持 TOML schema v1，采用三级视觉层次：
+
+```toml
+# 服务器 1：example-server
+[[servers]]
+  name = "example-server"
+  # 其他服务器字段……
+
+  # ── SSH 连接 ──
+  [servers.ssh]
+    user = "deploy"
+    # 其他 SSH 字段……
+
+  # ── 应用 1：example-app ──
+  [[servers.applications]]
+    name = "example-app"
+    # 其他应用字段……
+```
+
+上面是布局片段，完整字段以 `config/servers.example.toml` 为准。服务器表不缩进，
+服务器字段与 SSH/应用表缩进两格，SSH/应用字段缩进四格；每台服务器有分隔标题，
+每个应用有编号。空应用数组仍写在服务器层级，不要放进 SSH 表。
+
+长 `notes` 使用 TOML 多行基本字符串与行尾反斜杠续行，便于阅读且不向实际值加入换行。
+不要手工删除续行反斜杠；工具会验证格式化前后的解析值一致。
+
+```bash
+# 默认只检查格式，不写文件、不输出真实配置
+just inventory-format
+
+# 自动备份已有私有目录后原子写入，再验证结构
+just inventory-format config/private/servers.toml --write
+just inventory-check
+
+# 检查公开示例（无需 Git 私有性检查）
+just inventory-format config/servers.example.toml --example
+```
+
+维护顺序：手工编辑前 `just private-backup` → 修改字段 → `inventory-format --write` →
+`inventory-check`。格式化脚本自身仍会在实际写入前备份，以保护手工编辑后的版本；
+格式已经一致时不写入、不额外备份，也不更新 `updated_at`。
+
+格式检查退出码为 `0`（格式一致或写入成功）、`1`（需要格式化，未修改）、`2`（文件/结构/私有性错误）。
+写入只允许 Git 忽略且未跟踪的私有文件；`--example --write` 只允许仓库自带的公开示例。
+符号链接路径拒绝写入。错误不会输出真实字段值。
+
+格式化会重新生成注释、标题与空行，原有自定义注释会被替换。必须保留的信息应存入 `notes`
+或私有盘点快照。工具保留服务器和应用顺序，不改变字段值、应用状态或 SSH 验证状态。
+格式化不是新增记录向导，也不会连接服务器；现有平铺格式仍能被读取与校验，不强制迁移 schema。
 
 ## 验证
 

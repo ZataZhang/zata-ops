@@ -197,7 +197,8 @@ zata-ops tunnel close db-access
 
 服务器资产、SSH 密钥引用和应用部署清单采用本机私有配置：复制
 `config/servers.example.toml` 到被 Git 忽略的 `config/private/servers.toml`，
-填写后运行 `just inventory-check`。详见[私有运维配置](docs/guides/private-inventory.md)。
+填写后运行 `just inventory-format config/private/servers.toml --write` 整理层级，再运行 `just inventory-check`。详见[私有运维配置](docs/guides/private-inventory.md)。
+查看活动私有配置的统一摘要可运行 `just private-config-show`；凭据值和自由备注会隐藏。
 
 `zata-ops` 从当前工作目录的 `.env` / `.env.local` 读取配置(优先级:CLI 参数 > `.env.local` > `.env`)。完整模板见本仓库或下游项目的 `.env.example`。
 
@@ -234,12 +235,11 @@ restore ts:
 
 ---
 
-## OpenSandbox 远程部署准备
+## OpenSandbox 部署
 
-已提供 OpenSandbox + Docker + gVisor 的[准备包](deploy/opensandbox/README.md)：
-固定版本配置、独立控制面 systemd unit、只读预检查和显式创建的 SDK smoke。
-`just opensandbox-check` 与 `just opensandbox-smoke-plan` 仅做离线检查。
-当前未部署到服务器，完整步骤与尚待远端验收项见[部署指南](docs/guides/opensandbox.md)。
+已提供 OpenSandbox + Docker + gVisor 的[部署包](deploy/opensandbox/README.md)：
+固定版本配置、可复制到其他主机的安装器、主机预检查、独立控制面 systemd unit 和 SDK smoke；已在 Ubuntu 24.04 单机完成一次真实沙箱验收。
+默认只预览，需显式 `--apply` 才会修改目标机；详细步骤见[部署指南](docs/guides/opensandbox.md)。
 
 ---
 

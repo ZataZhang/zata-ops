@@ -18,6 +18,7 @@ from dotenv import dotenv_values
 from pydantic import Field, ValidationError, field_validator, model_validator
 from private_secrets import (
     SECRET_NAME,
+    credential_status,
     read_hidden_secret,
     run_with_credentials,
     store_secret,
@@ -131,9 +132,46 @@ def load_services(service_path: Path) -> ServicesConfig:
     if not service_path.exists():
         return ServicesConfig()
     service_path.chmod(0o600)
-    return ServicesConfig.model_validate_json(
-        json.dumps(tomllib.loads(service_path.read_text(encoding="utf-8")))
-    )
+    return parse_services_config(service_path.read_text(encoding="utf-8"))
+
+
+def parse_services_config(service_text: str) -> ServicesConfig:
+    """Parse and validate service metadata without changing file permissions.
+
+    Args:
+        service_text: TOML text from the private service inventory.
+
+    Returns:
+        Validated service inventory.
+
+    Raises:
+        ValueError: TOML or service fields are invalid.
+    """
+    return ServicesConfig.model_validate_json(json.dumps(tomllib.loads(service_text)))
+
+
+def summarize_services(
+    service_entries: list[ServiceConfig],
+    credential_status_by_name: dict[str, bool],
+) -> list[dict[str, object]]:
+    """Summarize service metadata and credential availability.
+
+    Args:
+        service_entries: Selected validated service records.
+        credential_status_by_name: Credential-name status map without values.
+
+    Returns:
+        Service dictionaries with a boolean ``password_configured`` field.
+    """
+    return [
+        {
+            **service_entry.model_dump(),
+            "password_configured": credential_status_by_name.get(
+                service_entry.password_env, False
+            ),
+        }
+        for service_entry in service_entries
+    ]
 
 
 def add_service(private_dir: Path, inventory: ServicesConfig) -> None:
@@ -295,16 +333,10 @@ def main() -> int:
                 {arguments.password_env: selected[0].password_env},
                 command,
             )
-        credentials = dotenv_values(
-            arguments.private_dir / "secrets.env", interpolate=False, encoding="utf-8"
+        configured_credentials = credential_status(
+            arguments.private_dir / "secrets.env"
         )
-        summaries = [
-            {
-                **service.model_dump(),
-                "password_configured": bool(credentials.get(service.password_env)),
-            }
-            for service in selected
-        ]
+        summaries = summarize_services(selected, configured_credentials)
         if not summaries:
             print("尚未登记服务。运行 just service-add 添加。")
         else:

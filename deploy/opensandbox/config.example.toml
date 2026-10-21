@@ -22,10 +22,10 @@ docker_runtime = "runsc"
 
 [store]
 type = "sqlite"
-path = "/mnt/data/opensandbox/control-plane/opensandbox.db"
+path = "/var/lib/opensandbox/control-plane/opensandbox.db"
 
 [storage]
-allowed_host_paths = ["/mnt/data/opensandbox/workspaces"]
+allowed_host_paths = ["/var/lib/opensandbox/workspaces"]
 
 [docker]
 network_mode = "zata-ops-sandbox-isolated"

@@ -11,6 +11,34 @@ from pydantic import ValidationError
 from zata_ops.inventory import load_inventory
 
 
+def validate_private_inventory(inventory_path: Path) -> None:
+    """Require an ignored, untracked inventory with no symlink path components.
+
+    Args:
+        inventory_path: Local inventory file, relative to the working directory.
+
+    Returns:
+        None; no files or permissions are changed.
+
+    Raises:
+        OSError: Git is unavailable.
+        ValueError: Inventory is tracked, not ignored, or uses a symbolic link.
+    """
+    absolute_path = inventory_path.absolute()
+    if any(parent.is_symlink() for parent in (absolute_path, *absolute_path.parents)):
+        raise ValueError("symlink inventory path")
+    tracked_check = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", str(inventory_path)],
+        capture_output=True,
+    )
+    ignored_check = subprocess.run(
+        ["git", "check-ignore", "--quiet", "--", str(inventory_path)],
+        capture_output=True,
+    )
+    if tracked_check.returncode != 1 or ignored_check.returncode != 0:
+        raise ValueError("private inventory must be Git-ignored and untracked")
+
+
 def main() -> int:
     """Validate a TOML inventory and optional Git privacy boundaries.
 
@@ -29,16 +57,7 @@ def main() -> int:
     try:
         inventory_config = load_inventory(inventory_path)
         if not cli_arguments.example:
-            tracked_check = subprocess.run(
-                ["git", "ls-files", "--error-unmatch", "--", str(inventory_path)],
-                capture_output=True,
-            )
-            ignored_check = subprocess.run(
-                ["git", "check-ignore", "--quiet", "--", str(inventory_path)],
-                capture_output=True,
-            )
-            if tracked_check.returncode != 1 or ignored_check.returncode != 0:
-                raise ValueError("private inventory must be Git-ignored and untracked")
+            validate_private_inventory(inventory_path)
     except (OSError, ValueError, ValidationError) as validation_error:
         # Do not echo TOML contents or Pydantic input values.
         if isinstance(validation_error, ValidationError):

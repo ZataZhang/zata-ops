@@ -1,0 +1,15 @@
+[Unit]
+Description=Forward the private Traefik socket to the OpenSandbox loopback API
+Requires=opensandbox.service
+After=opensandbox.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:18080
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

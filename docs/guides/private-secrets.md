@@ -29,10 +29,12 @@ PostgreSQL、MySQL 和 Redis 预填常用端口。URL 不替代主机、数据�
 ```bash
 just service-list
 just service-show main-postgres
+just private-config-show
 ```
 
 显示地址、端口、用户名、用途及 `password_configured` 状态，不显示密码。
 空清单会提示添加服务；非法配置的错误不会回显原始值。
+`private-config-show` 会跨服务器清单、服务清单和 OpenSandbox 配置生成统一摘要，凭据只显示名称与配置状态。
 
 按服务名称直接使用关联密码，例如为 PostgreSQL 客户端注入 `PGPASSWORD`：
 

@@ -1,30 +1,36 @@
-# Copy to config/private/servers.toml; never put real inventory in this example.
+# 运维清单：服务器 → SSH / 应用。真实配置仅存本机私有目录。
+# 分节标题由 inventory-format 生成；需要保留的信息请写入 notes。
 schema_version = 1
 updated_at = "2026-01-01"
 
+# ════════════════════════════════════════════════════════════════════════
+# 服务器 1：example-server ｜ 示例地域 ｜ 应用 1 项
+# ════════════════════════════════════════════════════════════════════════
 [[servers]]
-name = "example-server"
-public_ip = "192.0.2.10"
-private_ip = "10.0.0.10"
-cpu_cores = 2
-memory_gb = 4
-region = "示例地域"
-notes = "替换为你的服务器；未知 SSH 字段留空。"
-applications_inventory_status = "pending"
+  name = "example-server"
+  public_ip = "192.0.2.10"
+  private_ip = "10.0.0.10"
+  cpu_cores = 2
+  memory_gb = 4
+  region = "示例地域"
+  notes = "替换为你的服务器；未知 SSH 字段留空。"
+  applications_inventory_status = "pending"
 
-[servers.ssh]
-user = ""
-port = ""
-identity_file = ""
-verification_status = "pending"
+  # ── SSH 连接 ──
+  [servers.ssh]
+    user = ""
+    port = ""
+    identity_file = ""
+    verification_status = "pending"
 
-[[servers.applications]]
-name = "example-app"
-purpose = "示例应用，配置时替换或删除此应用表"
-url = "https://app.example.com"
-ports = [8080]
-deployment_type = "docker-compose"
-deployment_id = "example-app"
-deployment_dir = "/opt/apps/example-app"
-notes = "应用未知时删除应用表，并在服务器字段中设置 applications = []"
-verified_at = ""
+  # ── 应用 1：example-app ──
+  [[servers.applications]]
+    name = "example-app"
+    purpose = "示例应用，配置时替换或删除此应用表"
+    url = "https://app.example.com"
+    ports = [8080]
+    deployment_type = "docker-compose"
+    deployment_id = "example-app"
+    deployment_dir = "/opt/apps/example-app"
+    notes = "应用未知时删除应用表，并在服务器字段中设置 applications = []"
+    verified_at = ""

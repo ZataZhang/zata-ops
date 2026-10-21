@@ -21,11 +21,21 @@
 | `docs/ai-standards/code-reuse.md` | **任何**新增或修改代码前；考虑提取 helper、判断是否复制粘贴、函数参数 ≥4 个、文件接近 500 行、运行 `just lint --reuse` 之前；交付前必须完成其中的 **AI 编码自检清单** | 纯文档排版或纯配置改动且无任何代码逻辑变更 |
 | `docs/ai-standards/naming.md` | 新增 Python 变量、函数、类、模块；命名风格不确定时 | `tests/playwright-e2e/` 内的 TypeScript 改动 |
 | `docs/ai-standards/comments-docstrings.md` | 新增/修改公共 Python API；写模块/类/函数 docstring；做文件 I/O 涉及编码问题 | 仅改私有实现细节且不涉及公共 docstring 时 |
-| `docs/ai-standards/documentation.md` | 改动公共函数签名、配置项、业务流程；新增长期文档页；更新 `mkdocs.yml` 导航 | 纯内部重构且无对外行为或文档变化 |
+| `docs/ai-standards/documentation.md` | 改动公共函数签名、配置项、业务流程；新增长期文档页；更新 `mkdocs.yml` 导航；依赖可能变化的上游知识或线上环境现状 | 纯内部重构且无对外行为或文档变化 |
 | `docs/ai-standards/testing.md` | 准备验证策略；改动 API/CLI/前端流程/后台任务/持久化/启动或部署；写 PRD 的 Realistic Validation Plan | 仅改注释或纯文档排版 |
 | `docs/ai-standards/tooling.md` | 选择运行命令；改 `justfile` / `pre-commit` / `mkdocs` / Docker 配置；处理 PRD 归档流程；处理 lint flag 或重复检测 hooks | 在已熟悉常用 `just` 命令、且本次不动工具链配置时 |
 
 `tests/playwright-e2e/` 是独立 TypeScript/Node 包，遵循该目录自己的 `README.md`，不强制套用 Python 规范。
+
+## 私有运维资料的查找入口
+
+用户询问项目已经登记的服务器、应用、开发服务 URL、账号或凭据时，先阅读 `docs/guides/private-inventory.md` 与 `docs/guides/private-secrets.md`，再按资料类型查找：
+
+- 服务器、SSH 引用和应用部署信息：`config/private/servers.toml`。
+- 数据库、缓存及其他开发服务的 URL、用户名和凭据关联：使用 `just service-list` / `just service-show <名称>`；底层元数据在 `config/private/services.toml`。
+- 密码与 Token 保存在 `config/private/secrets.env`。不要直接读取或打印该文件；按指南将凭据注入可信命令。列表与详情只显示凭据是否已配置，不显示密码。
+
+`just service-*` 是现有管理入口，`zata-ops --help` 目前没有统一的私有资产管理命令。清单描述登记信息；用户询问服务此刻是否可用时，需要另做实时检查并说明核验时间。
 
 ## Critical Summary
 
@@ -40,6 +50,7 @@
 - 单代码文件非空行不超过 1000 行；`just lint` 会对此发出警告
 - PRD 对应任务全部完成后：将已完成项打勾，所有 Acceptance Checklist 条目达到完成态后，再将 PRD 从 `tasks/pending/` 归档到 `tasks/archive/`
 - PRD 必须包含 Realistic Validation Plan，验收清单需覆盖最高可行保真度的真实入口验证，或说明无可执行行为变更
+- 遇到易变的上游知识或线上环境信息时，先核验权威文档或实时状态，并记录核验时间与证据；规则见 `docs/ai-standards/documentation.md`
 - 变更代码时同步更新 `docs/` 与 `mkdocs.yml`
 - `tests/playwright-e2e/` 是独立 TypeScript/Node 包，使用 `npm`，不强制套用 Python SSA 命名规范
 

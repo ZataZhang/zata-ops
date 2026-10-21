@@ -4,11 +4,59 @@ from __future__ import annotations
 
 import re
 import tomllib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DATA_ROOT = Path("/mnt/data/opensandbox")
+DATA_ROOT = Path("/var/lib/opensandbox")
 NETWORK_NAME = "zata-ops-sandbox-isolated"
+RESTRICTED_DATA_PATHS = (
+    Path("/etc"),
+    Path("/home"),
+    Path("/opt"),
+    Path("/proc"),
+    Path("/root"),
+    Path("/run"),
+    Path("/sys"),
+    Path("/usr"),
+    Path("/var/lib/docker"),
+)
+
+
+def normalize_data_root(data_root: Path) -> Path:
+    """Validate a dedicated absolute storage directory for this service.
+
+    Args:
+        data_root: Requested host directory for state and workspaces.
+
+    Returns:
+        Canonical absolute path without unresolved symbolic links.
+
+    Raises:
+        ValueError: The path is relative, unsafe, or has existing symlink components.
+    """
+    if not data_root.is_absolute():
+        raise ValueError("data_root_must_be_absolute")
+    if data_root.name != "opensandbox" or any(
+        part in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9._-]+", part)
+        for part in data_root.parts[1:]
+    ):
+        raise ValueError("data_root_must_end_in_opensandbox")
+    normalized_path = Path(os.path.normpath(str(data_root)))
+    if normalized_path.is_symlink():
+        raise ValueError("data_root_symlink_not_allowed")
+    resolved_path = normalized_path.resolve(strict=False)
+    if normalized_path == Path("/"):
+        raise ValueError("data_root_cannot_be_filesystem_root")
+    if any(
+        candidate_path == restricted_path
+        or candidate_path.is_relative_to(restricted_path)
+        or restricted_path.is_relative_to(candidate_path)
+        for candidate_path in (normalized_path, resolved_path)
+        for restricted_path in RESTRICTED_DATA_PATHS
+    ):
+        raise ValueError("data_root_overlaps_restricted_path")
+    return normalized_path
 
 
 @dataclass(frozen=True)
@@ -17,6 +65,8 @@ class DeploymentSettings:
 
     config: dict
     api_key: str = field(repr=False)
+    config_path: Path = field(repr=False)
+    env_path: Path = field(repr=False)
     example: bool = False
 
 
@@ -34,15 +84,20 @@ def is_pinned_image(image_reference: object) -> bool:
     )
 
 
-def validate_configuration(config: dict) -> list[str]:
+def validate_configuration(config: dict, data_root: Path = DATA_ROOT) -> list[str]:
     """Check invariants of the owned pilot profile, without Docker access.
 
     Args:
         config: Parsed upstream-compatible configuration dictionary.
+        data_root: Dedicated persistent directory for service state and workspaces.
 
     Returns:
         Stable violation codes; contains no configuration values or secrets.
     """
+    try:
+        normalized_data_root = normalize_data_root(data_root)
+    except ValueError:
+        return ["invalid_data_root"]
     required_values = {
         ("server", "host"): "127.0.0.1",
         ("server", "port"): 18080,
@@ -55,8 +110,8 @@ def validate_configuration(config: dict) -> list[str]:
         ("docker", "no_new_privileges"): True,
         ("docker", "drop_capabilities"): ["ALL"],
         ("store", "type"): "sqlite",
-        ("store", "path"): str(DATA_ROOT / "control-plane/opensandbox.db"),
-        ("storage", "allowed_host_paths"): [str(DATA_ROOT / "workspaces")],
+        ("store", "path"): str(normalized_data_root / "control-plane/opensandbox.db"),
+        ("storage", "allowed_host_paths"): [str(normalized_data_root / "workspaces")],
         ("ingress", "mode"): "direct",
         ("renew_intent", "enabled"): False,
     }
@@ -102,7 +157,11 @@ def validate_configuration(config: dict) -> list[str]:
 
 
 def load_settings(
-    config_path: Path, env_path: Path, *, example: bool = False
+    config_path: Path,
+    env_path: Path,
+    *,
+    example: bool = False,
+    data_root: Path = DATA_ROOT,
 ) -> DeploymentSettings:
     """Load exact deployment policy and a restricted systemd environment file.
 
@@ -110,6 +169,7 @@ def load_settings(
         config_path: Local TOML file.
         env_path: Local file containing only OPENSANDBOX_SERVER_API_KEY.
         example: Allow the shipped dummy key for offline example validation only.
+        data_root: Expected host path for SQLite state and sandbox workspaces.
 
     Returns:
         Validated deployment inputs.
@@ -119,7 +179,7 @@ def load_settings(
         ValueError: Configuration violates policy or the key is invalid.
     """
     config = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    violations = validate_configuration(config)
+    violations = validate_configuration(config, data_root=data_root)
     environment = {}
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
         stripped_line = raw_line.strip()
@@ -143,4 +203,10 @@ def load_settings(
                 violations.append("private_file_permissions_required")
     if violations:
         raise ValueError(",".join(violations))
-    return DeploymentSettings(config=config, api_key=api_key, example=example)
+    return DeploymentSettings(
+        config=config,
+        api_key=api_key,
+        config_path=config_path,
+        env_path=env_path,
+        example=example,
+    )

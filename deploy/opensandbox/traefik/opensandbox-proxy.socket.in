@@ -1,0 +1,13 @@
+[Unit]
+Description=Private Docker-network listener for the OpenSandbox Traefik route
+Requires=docker.service
+After=docker.service
+
+[Socket]
+ListenStream=@INGRESS_GATEWAY@:18081
+Accept=no
+NoDelay=true
+Service=opensandbox-proxy.service
+
+[Install]
+WantedBy=sockets.target

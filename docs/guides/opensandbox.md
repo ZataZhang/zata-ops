@@ -1,238 +1,294 @@
-# OpenSandbox + Docker + gVisor 部署准备
+# OpenSandbox + Docker + gVisor 部署指南
 
-## 当前交付状态
+仓库提供固定版本配置、签名源安装脚本、主机预检查、systemd 服务和真实 SDK 冒烟脚本。安装器支持 Ubuntu 24.04 x86_64、Python 3.12、systemd 与已运行的 Docker；不会安装或替换 Docker，也不会开放公网入口。
 
-这是后续部署可用的配置、检查与验收材料，本轮不安装软件、不修改 Docker、不创建沙箱、不调整防火墙、不连接远端机器，也不修改本机私有服务器配置。
+默认数据目录是 `/var/lib/opensandbox`。有独立数据盘时，可指定 `/mnt/data/opensandbox` 或其他以 `opensandbox` 结尾的绝对路径，并通过 `--require-mountpoint` 要求目标挂载点已经挂载。安装器会检查内存、Docker 数据目录空间、数据目录空间、端口和现有服务。
 
-目标是单机、单管理员、受控任务的私有试点。业务通过 OpenSandbox 原生 SDK 接入，沿用本地 E2B 的应用需要自行实现后端适配；此包不提供 E2B HTTP 兼容层。
+## 部署范围与安全边界
 
-控制面在宿主机的独立 Python 环境运行，由 systemd 管理；它通过本机 Docker daemon 创建 gVisor 容器。这样 SDK 可以使用服务端代理，应用只需访问一个 loopback API 端口。无需 Kubernetes、宿主内核更换或 KVM。
+目标是单机、单管理员、受控任务的私有试点。业务使用 OpenSandbox 原生 SDK；沿用本地 E2B 的应用需要自行实现后端适配，本部署包不提供 E2B HTTP 兼容层。控制面在宿主机独立 Python 虚拟环境运行，由 systemd 管理；沙箱通过 Docker 使用 gVisor `runsc`，不依赖 KVM。
 
-## 基线与默认边界
+截至 2026-10-21，已在一台 Ubuntu 24.04 x86_64、2 vCPU、约 7.5 GiB 内存的主机完成试点部署。验证确认服务由 systemd 管理、API 仅监听 loopback、Docker 默认 runtime 仍为 `runc`、`runsc` 可用；安装及 runtime 策略修正期间 Docker 主进程 PID 未变化，既有 5 个容器仍在运行。真实 SDK smoke 在 `--network=sandbox` 模式下创建了临时沙箱，检查 `HostConfig.Runtime=runsc`、内部网络、文件读写、命令执行和清理，全部通过。启动探测曾遇到瞬时代理 502，SDK 自动重试后通过。该结果验证的是这台主机上的固定 smoke，不代表多租户或任意代码执行已具备生产隔离能力。
 
-- OpenSandbox 服务端和 Python SDK 基线为 `1.1.1`，上游发布标签 `release-1.1.1`。该版本修复了 1.1.0 服务端包导入缺陷。
-- 服务端依赖锁针对 Ubuntu 24.04 常见的 Linux x86_64 / Python 3.12；不要直接当成其他平台的通用锁文件。
-- execd 已固定 OCI 多架构清单摘要。部署时还需记录实际拉取平台、工作负载镜像摘要、runsc 版本、配置和依赖锁的校验值。
-- API 只监听 `127.0.0.1:18080`，沙箱发布端口只监听 `127.0.0.1`，使用范围 `41000–41100`。
-- 强制 `secure_runtime.type = "gvisor"` 与 `docker_runtime = "runsc"`，不提供普通 runc 回退配置。
-- 状态和工作区位于 `/mnt/data/opensandbox/`；不在配置中填真实服务器地址或凭据。
-- 使用命名内部 bridge 网络 `zata-ops-sandbox-isolated`，默认没有公网出口。镜像拉取由宿主 Docker daemon 完成，应预拉取允许的镜像；需要安装依赖的任务优先预构建镜像。
+- OpenSandbox 服务端与 SDK 固定为 `1.1.1`；gVisor 使用官方签名 apt 源，并记录安装时选中的精确包版本。
+- 服务端与 smoke SDK 使用分开的 Python 虚拟环境及哈希锁文件，不改变系统 Python。
+- API 只监听 `127.0.0.1:18080`；沙箱端口只绑定 loopback，范围 `41000–41100`。
+- Docker 的 `runsc` 使用 `--network=sandbox`，让 gVisor netstack 留在沙箱网络命名空间内；不得改为 `--network=host`，该模式会降低对宿主网络的隔离。
+- `secure_runtime.type = "gvisor"` 与 Docker `runsc` 是强制项，没有回退到普通 `runc` 的配置。
+- Docker 默认 runtime 保持原值。安装器备份并校验 daemon 配置，再通过 systemd `reload` 发送 HUP；安装前后核对 Docker 主进程 PID、重启次数、默认 runtime 和运行中容器状态。
+- Docker 配置备份保存在 `/var/backups/zata-ops/opensandbox/`；安装记录保存在 `/etc/opensandbox/deployment.json`，不含 API key。
+- 安装器不改防火墙、不重启服务器、不停止现有容器、不开放 API 公网端口，也不把 `runsc` 设为默认 runtime。
 
-API key 是管理员凭据，不能给前端、模型、任务容器或不可信用户。控制面具有宿主 Docker 管理权限，示例 unit 以 root 运行；它不是多租户授权网关。工作区 allowed_host_paths 仅限制宿主挂载范围，不能分辨不同业务用户。
+API key 是管理员凭据，不能给前端、模型、沙箱或不可信用户。控制面可访问 Docker socket，等同于宿主机高权限管理入口；本配置适用于受信任的单管理员试点，不是多租户授权网关。
 
-**内部网络并不等于完整的出网和租户隔离。** 同一内部 bridge 上的容器仍可能相互访问，或访问宿主 bridge 地址；loopback 绑定也不能证明所有本机容器都无法触达控制面。在专用测试节点完成私网、元数据、宿主管理端口和跨沙箱访问验证前，只运行下面的固定 smoke 任务，不开放任意代码执行。多租户或公网服务需另行落实应用授权、每租户网络/工作区隔离、资源准入和网络策略。
+**内部 Docker bridge 不等于完整隔离。** `--network=sandbox` 让 gVisor 使用自己的网络栈，但 Docker bridge 上的路由仍可能允许访问同网容器或宿主 bridge 地址；loopback 绑定也不能证明同机容器都无法触达控制面。完成宿主、元数据、私网、跨沙箱和资源配额测试前，只运行固定 smoke 任务，不开放任意代码执行。公网或多租户服务需要另行设计授权、租户网络、资源准入和网络策略。
 
-## 先在本机验证准备材料
+## 生成本机私有配置
+
+先备份现有本机运维配置。新建配置必须位于被 Git 忽略的 `config/private/` 下。生成器创建 256 位 API key，不打印 key，也不会覆盖已有目录。
+
+```bash
+just private-backup
+just opensandbox-configure
+```
+
+默认创建 `config/private/opensandbox/config.toml` 和 `server.env`，文件权限 `600`、目录权限 `700`。独立数据盘可按目标机另建配置：
+
+```bash
+just opensandbox-configure \
+  /mnt/data/opensandbox \
+  config/private/opensandbox/storage-node
+```
+
+使用独立挂载点时，先在目标机检查 `findmnt --mountpoint /mnt/data`。部署命令也可加 `--require-mountpoint /mnt/data`；如果挂载不存在，安装器会停止。
+
+检查示例策略和真实私有配置：
 
 ```bash
 just opensandbox-check
-just opensandbox-smoke-plan
-```
-
-第一条仅解析示例配置和固定部署策略，输出 `example_valid` 与 `deployment_ready: false`。
-第二条只列 smoke 计划，不导入 SDK、不联系平台、不调用 Docker。代码没有 SSH 或安装命令。
-
-检查器会拒绝放宽监听地址、换成 runc、清空宿主路径允许列表、去掉镜像摘要等修改。
-这是一组本仓库的策略检查，不替代 OpenSandbox 自身的配置模型；升级时两边都必须验证。
-真实配置要求文件权限没有 group/other 读写执行位（建议 `600`），API key 为 64 位小写十六进制，环境文件只允许一个 `OPENSANDBOX_SERVER_API_KEY` 字段，不执行 shell 展开。
-
-## 私有配置与未来交接
-
-以下命令是**后续明确授权部署时执行的操作手册**，本轮仅准备文本，不执行这些写操作。
-
-若准备修改已有 `config/private/` 内容，先运行 `just private-backup`。真实配置只放入被忽略的私有目录。
-
-```bash
-# 在运维工作站执行；已有文件不要覆盖。
-mkdir -p config/private/opensandbox
-cp -n deploy/opensandbox/config.example.toml config/private/opensandbox/config.toml
-cp -n deploy/opensandbox/server.env.example config/private/opensandbox/server.env
-chmod 700 config/private/opensandbox
-chmod 600 config/private/opensandbox/config.toml config/private/opensandbox/server.env
-```
-
-使用密码管理器或本机安全编辑器，将环境文件的占位值替换为 `secrets.token_hex(32)` 生成的 key；不要把 key 放入聊天、Git、命令参数、共享终端日志或录屏。不得用示例占位 key 启动服务。
-
-```bash
 uv run python scripts/opensandbox/prepare.py validate \
   --config config/private/opensandbox/config.toml \
   --env-file config/private/opensandbox/server.env
 ```
 
-复制到远端时只使用已核对身份的 SSH/SCP 或其他可信通道，保持受限权限；本轮不生成真实 key，也不复制任何文件到服务器。
+部署包文件和脚本可以从本仓库复制到目标机；私有配置通过受信任的 SSH/SCP 通道单独传输，并在目标机设为 root 所有、`600` 权限。不要提交私有目录，也不要把 key 放进命令参数、聊天、终端录屏或日志。
 
-## 宿主机准备顺序
+目标机不需要完整克隆仓库，但安装器需要保留下面的目录结构。先在本机从仓库根目录打包部署脚本（不包含本机私有配置）：
 
-### 1. 检查挂载和资源
+```bash
+just opensandbox-configure /var/lib/opensandbox config/private/opensandbox/new-server
+tar --exclude='*/__pycache__' -czf /tmp/opensandbox-deploy.tar.gz \
+  deploy/opensandbox scripts/opensandbox
+scp /tmp/opensandbox-deploy.tar.gz user@server:/tmp/
+scp config/private/opensandbox/new-server/config.toml user@server:/tmp/opensandbox-config.toml
+scp config/private/opensandbox/new-server/server.env user@server:/tmp/opensandbox-server.env
+```
 
-后续部署前重新采集实际状态，不能用历史快照代替：
+在目标机解包并收紧私有配置权限；随后以下命令中的路径都指向这份独立部署包：
+
+```bash
+sudo mkdir -p /opt/zata-ops-deploy
+sudo tar -xzf /tmp/opensandbox-deploy.tar.gz -C /opt/zata-ops-deploy
+sudo install -o root -g root -m 600 /tmp/opensandbox-config.toml /etc/opensandbox-config.toml
+sudo install -o root -g root -m 600 /tmp/opensandbox-server.env /etc/opensandbox-server.env
+```
+
+后续安装命令将 `./deploy/opensandbox/install.sh` 替换为 `/opt/zata-ops-deploy/deploy/opensandbox/install.sh`，并把配置参数改为 `/etc/opensandbox-config.toml` 与 `/etc/opensandbox-server.env`。Smoke 命令同样使用 `/opt/zata-ops-deploy/scripts/opensandbox/smoke.py`；安装器会把运行所需工具复制到 `/opt/opensandbox/tools`，因此安装后可删除部署包和传输暂存文件。不要把 `server.env` 留在普通用户可读目录。
+
+## 检查部署计划
+
+在目标机的仓库副本中，使用 root 预览安装步骤。未传 `--apply` 时只校验配置并输出计划，不访问网络、不运行 Docker 命令，也不修改主机：
+
+```bash
+sudo ./deploy/opensandbox/install.sh \
+  --config config/private/opensandbox/config.toml \
+  --env-file config/private/opensandbox/server.env \
+  --data-root /var/lib/opensandbox
+```
+
+在目标机增加 `--check-host` 可单独运行只读主机检查；安装时 `--apply` 会再次检查：
+
+```bash
+sudo ./deploy/opensandbox/install.sh \
+  --config config/private/opensandbox/config.toml \
+  --env-file config/private/opensandbox/server.env \
+  --data-root /var/lib/opensandbox \
+  --check-host
+```
+
+独立数据盘例子：
+
+```bash
+sudo ./deploy/opensandbox/install.sh \
+  --config config/private/opensandbox/storage-node/config.toml \
+  --env-file config/private/opensandbox/storage-node/server.env \
+  --data-root /mnt/data/opensandbox \
+  --require-mountpoint /mnt/data
+```
+
+目标机还应确认：
 
 ```bash
 lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS
 findmnt --mountpoint /mnt/data
-findmnt --fstab
 free -h
-docker info --format '{{.DockerRootDir}}'
-df -h / /mnt/data
+df -h / /var/lib/docker /var/lib/opensandbox
+docker info --format '{{.ServerVersion}} {{.DockerRootDir}} {{.DefaultRuntime}}'
+systemctl show docker -p CanReload -p MainPID -p NRestarts
 ss -lnt
 ```
 
-确认 `/mnt/data` 是预期数据盘且开机可挂载。先创建 `/mnt/data/opensandbox/control-plane` 和 `workspaces`，目录权限设为 `700`。unit 的 `RequiresMountsFor` 提供启动依赖，但不能证明该目录挂载了正确的数据盘，必须核对 findmnt。
+预检查要求可用内存至少 4 GiB、Docker data-root 至少剩余 10 GiB、数据目录所在文件系统至少剩余 20 GiB，且 `18080` 与 `41000–41100` 空闲。这些是安装门槛，不代表并发容量承诺。若两个目录位于同一文件系统，空间会共同消耗。2 核 / 8 GiB 级别机器建议先单任务串行试用；OpenSandbox API 没有全局并发配额，业务入口仍需自行限制。
 
-数据盘挂载不会迁移 Docker 的镜像和容器可写层。预检查要求 Docker data-root 所在盘至少剩余 10 GiB、数据盘至少 20 GiB、当前可用内存至少 4 GiB；这些是保守的试点准入阈值，不代表并发容量承诺。根盘空间不满足时先制定清理或容量方案，不能为了通过检查自动迁移现有 Docker data-root。
+## 在目标机执行安装
 
-### 2. 安装并固定 gVisor
-
-在维护窗口按 [gVisor 官方安装说明](https://gvisor.dev/docs/user_guide/install/)安装适用架构的 runsc，记录版本与来源。检查实际安装路径是否为 `/usr/bin/runsc`；若不同，修改配置片段并同步检查策略。
-
-`deploy/opensandbox/docker-daemon.fragment.json` 只是合并片段。先备份 `/etc/docker/daemon.json`，将 `runtimes.runsc` 合并进去，保留现有 runtime、代理、日志、data-root、registry mirror 和默认 runtime。不要把 runsc 改成整个宿主的 default-runtime。
-
-片段的 `--network=host` 是 gVisor 使用所在容器网络命名空间的参数，不等同于 Docker 的 `--network=host`。沙箱 Docker 网络仍由本配置的命名 bridge 决定。`--overlay2=none` 让写入对 Docker 存储层可见，本试点仍不承诺快照或进程恢复能力。
+确认计划、目标身份、挂载点和空间后，在目标机显式添加 `--apply`：
 
 ```bash
-# 仅校验配置，不会重启 Docker。
-sudo dockerd --validate --config-file=/etc/docker/daemon.json
+sudo ./deploy/opensandbox/install.sh \
+  --config config/private/opensandbox/config.toml \
+  --env-file config/private/opensandbox/server.env \
+  --data-root /var/lib/opensandbox \
+  --apply
 ```
 
-Docker 重启会影响已有业务，需在检查服务 restart policy、可恢复性和维护窗口后单独执行。此包不包含自动修改或重启脚本。变更后检查 `docker info` 的 runtime 注册情况，并最终通过 smoke 的实际容器 runtime 证据验证是否生效。
+安装器会再次预检查；要求安装目录和配置目录尚不存在，避免覆盖已有部署。随后从 [gVisor 官方 apt 安装源](https://gvisor.dev/docs/user_guide/install/)下载签名密钥，添加签名仓库并安装 apt 选中的精确版本；只刷新包索引和安装需要的包，不升级系统。接着保留 Docker daemon 的其他设置、runtime 与默认 runtime，只合并 `runsc` 路径和固定参数；`dockerd --validate` 通过后热加载 Docker。最后创建内部 bridge、安装哈希锁定的服务端与 smoke SDK 虚拟环境、写入 root 私有配置和 systemd unit，并启动 loopback API。
 
-### 3. 创建内部网络
+Docker 热加载不等于重启。若主机不支持 systemd Docker reload，安装器会在写入前停止。它会核对 Docker PID、运行中容器和默认 runtime 是否保持不变。配置错误或已有 `runsc` 参数冲突时也会拒绝覆盖。安装器在 `/opt/opensandbox/.zata-ops-managed` 写入标记；某个步骤中断后，检查状态并确认标记仍属于本部署，再用相同命令加 `--resume-partial` 继续。它不会自动清理已安装的 apt 包或网络。
+
+安装后检查：
 
 ```bash
-# 会创建宿主 Docker 网络；仅在后续授权部署时执行。
-sudo docker --host unix:///var/run/docker.sock network create \
-  --driver bridge --internal zata-ops-sandbox-isolated
-```
-
-网络已存在时先 inspect，确认 driver 和 Internal 属性，不能在冲突时删除重建。后续若需要公网出口，应另行设计受控代理与元数据/私网阻断，不直接将该网络改为普通 bridge 后声称仍有同样安全边界。
-
-### 4. 安装独立控制面
-
-建议将包文件和工具安装到以下路径，私有文件不混入源码目录：
-
-```text
-/opt/opensandbox/venv/                       独立 Python 3.12 环境
-/opt/opensandbox/tools/configuration.py      本仓库共享策略校验
-/opt/opensandbox/tools/prepare.py            离线检查/宿主预检查
-/etc/opensandbox/config.toml                 私有 TOML，600
-/etc/opensandbox/server.env                  私有 API key，600
-/mnt/data/opensandbox/control-plane/         SQLite、HOME 状态
-/mnt/data/opensandbox/workspaces/            允许的任务挂载区域
-```
-
-在已准备 uv 的目标机上安装锁定依赖，不改变系统 Python：
-
-```bash
-sudo uv venv --python /usr/bin/python3.12 /opt/opensandbox/venv
-sudo uv pip sync --python /opt/opensandbox/venv/bin/python \
-  --require-hashes deploy/opensandbox/requirements.txt
-```
-
-`sudo uv` 需要目标机 root 可访问 uv；若 uv 安装在当前用户目录，使用已核实的绝对路径，不临时运行不明来源的安装脚本。
-
-将两个工具脚本放入 `/opt/opensandbox/tools/`，由 root 拥有且普通用户不可写。将私有配置安装到 `/etc/opensandbox/`（目录 `700`，文件 `600`），确认版本锁与目标平台一致。不要同时启动多份服务端进程使用同一个 SQLite 状态目录。
-
-### 5. 执行只读预检查，再启动服务
-
-在目标宿主运行下面的命令；这不是工作站远程检查器，不接受 SSH 主机参数。
-
-```bash
-sudo /opt/opensandbox/venv/bin/python /opt/opensandbox/tools/prepare.py preflight \
-  --config /etc/opensandbox/config.toml \
-  --env-file /etc/opensandbox/server.env
-```
-
-预检查只读 `/etc/docker/daemon.json`、挂载、内存、磁盘、监听端口与本机 Docker 元数据。Docker 调用强制指定 `unix:///var/run/docker.sock`，不使用用户的远程 Docker context。退出码：`0` 表示本轮前置检查通过，`1` 表示宿主条件未满足，`2` 表示配置非法。它不拉镜像、不创建网络/容器，也不能证明 gVisor 已成功运行任务。
-
-端口空闲检查适用于首次启动前；服务启动后占用 18080 是正常现象，不能把这条检查当作运行中健康检查。
-
-通过后，将 unit 安装到 `/etc/systemd/system/opensandbox.service`：
-
-```bash
-# 以下会改变服务器状态，保留给后续部署执行。
-sudo systemctl daemon-reload
-sudo systemctl enable --now opensandbox
 sudo systemctl status opensandbox --no-pager
+sudo /opt/opensandbox/venv/bin/python /opt/opensandbox/tools/prepare.py validate \
+  --config /etc/opensandbox/config.toml \
+  --env-file /etc/opensandbox/server.env \
+  --data-root /var/lib/opensandbox
+sudo docker --host unix:///var/run/docker.sock info \
+  --format '{{.DefaultRuntime}} {{range $name, $runtime := .Runtimes}}{{$name}} {{end}}'
+sudo ss -lnt
 ```
 
-不要仅凭 unit active 宣布沙箱可用。确认 API 和动态端口没有公网监听，再执行真实 smoke。
+服务启动后不要再运行首次 `preflight` 作为健康检查，因为 API 已正常占用 `18080`。安装器会在 `/etc/opensandbox/deployment.json` 记录服务、gVisor、Docker、`runsc` 参数与锁文件摘要，不记录 key。
 
-## 真实 smoke：显式允许后才创建沙箱
+## 真实 SDK 冒烟验收
 
-先从可信来源预拉取一个包含 Python 3 的 Linux 工作负载镜像，记录其不可变 sha256 摘要。首次拉取 execd 和工作负载镜像需要考虑 Docker 根盘容量；内部网络上的容器无需公网出口。
-
-SDK 验收脚本使用 PEP 723 声明固定 `opensandbox==1.1.1`，不把 SDK 加到 zata-ops 运行时依赖。默认仅输出计划：
+安装只证明服务启动和 gVisor runtime 注册。首次 smoke 会下载 execd 和工作负载镜像并实际创建、销毁一个沙箱；先评估 Docker 根盘余量。使用 Python 官方镜像并固定到本机拉取的摘要：
 
 ```bash
-uv run python scripts/opensandbox/smoke.py
+sudo docker pull python:3.12-slim
+sudo docker image inspect --format '{{index .RepoDigests 0}}' python:3.12-slim
 ```
 
-部署获准且平台启动后，才在目标宿主运行：
+然后在目标机运行。将上一步输出的完整不可变镜像引用填入 `--image`：
 
 ```bash
-# 用实际批准的镜像摘要替换 IMAGE_DIGEST；占位值不会通过参数检查。
-sudo uv run --script scripts/opensandbox/smoke.py \
+sudo /opt/opensandbox/smoke-venv/bin/python \
+  /opt/opensandbox/tools/smoke.py \
   --allow-create \
   --config /etc/opensandbox/config.toml \
   --env-file /etc/opensandbox/server.env \
-  --image 'python@sha256:IMAGE_DIGEST'
+  --image 'python:3.12-slim@sha256:<实际摘要>'
 ```
 
-脚本只连接本机 `127.0.0.1:18080`，通过 `use_server_proxy=True` 走控制面代理，创建最长 180 秒、512 MiB/0.5 CPU 的固定任务。按以下顺序检查：
+脚本创建最长 180 秒、512 MiB / 0.5 CPU 的固定任务，先核对容器身份、实际 `HostConfig.Runtime=runsc` 和内部网络，再通过 SDK 写入/读取固定文本文件并运行固定 Python 命令；最后按本次标签销毁并确认容器消失。失败时不会自动删除其他容器；清理状态不确定时要按输出的 correlation 手工核对。
 
-1. SDK 创建实例，记录唯一 correlation 与 sandbox ID。
-2. 按本次独有标签在本机 Docker 查找实例，核对平台实例 ID、实际 `HostConfig.Runtime=runsc` 和内部网络；发现降级时拒绝后续命令与文件操作。
-3. 通过 SDK 写入、读取固定文件，再运行固定 Python argv 读取文件；核对内容与退出码。
-4. 在异常路径也尝试 `kill` 和关闭客户端，再从本机 Docker 查询是否还有本次标签的容器。
+通过只证明本次固定任务的创建、gVisor runtime、文本文件、命令和清理有效；不证明多租户隔离、二进制大文件、PTY、端口预览、网络阻断、容器间隔离或业务应用已接通。不要把 API key 放到沙箱镜像或 smoke 参数中。
 
-主流程等待预算 150 秒；触发超时后还会尝试清理，因此总耗时可能更长。创建超时、SDK 连接中断或进程被强制终止时，不能保证当场回收；报告 `unverified`/`pending` 并保留最先输出的 correlation，需人工对账与验证 TTL 回收。脚本不会自动 `docker rm` 或清除其他实例，SDK close 也不能代替实例销毁。
+## 业务接入与远程访问
 
-成功只证明这一条固定任务的创建、gVisor runtime、SDK 命令/文本文件和容器清理。它不证明二进制大文件、PTY、内存快照、异常进程树取消、多租户隔离、端口预览、网络阻断或业务应用已接通。
+SDK 只能由可信业务后端调用，管理员 key 不下发到前端。应用只从允许列表选择镜像/profile；入口检查任务归属、资源预算、超时和并发，并在结束后归档产物。不要把镜像、volume、entrypoint 或 runtime 扩展原样暴露给不可信调用者。
 
-## 业务接入与权限范围
+API 仍只绑定 loopback。管理工作站通过 SSH 隧道访问，不直接开放服务器公网端口：
 
-SDK 必须由可信业务后端调用，管理员 key 不下发给前端。应用只从服务端允许列表中选择镜像/profile；执行前检查任务归属、资源预算和超时，销毁后确认产物已进入业务存储。
+```bash
+ssh -N -L 18080:127.0.0.1:18080 user@server
+```
 
-创建接口的镜像、volume、entrypoint、runtime 扩展不能原样暴露给不可信调用者。`max_sandbox_timeout_seconds` 只限制创建时长，不是可靠的总生存期或全局并发限制；客户端续期、创建速率与总资源配额需由可信业务入口额外限制。单个 smoke 的 resource 字段不代表服务端已经对所有调用强制 512 MiB/0.5 CPU。
+隧道建立后，本机应用把 `http://127.0.0.1:18080` 当作 OpenSandbox 地址。下面两个变量是应用自己的约定，SDK 不会自动读取；代码要显式将 key 传给 `ConnectionConfig.api_key`：
 
-远程应用访问时优先先用 SSH 隧道，不在本轮开放 API 公网入口。只有完成业务鉴权、TLS、租户路由与端口代理设计后，才另行配置公网反向代理。OpenSandbox API 与 E2B 不同，不能只替换 E2B_API_URL 后宣布迁移完成。
+```dotenv
+OPENSANDBOX_BASE_URL=http://127.0.0.1:18080
+OPENSANDBOX_API_KEY=<从可信私密配置或密钥管理器注入>
+```
 
-## 停止、回退与剩余资源
+`OPENSANDBOX_API_KEY` 的值必须与服务端 `server.env` 中的 `OPENSANDBOX_SERVER_API_KEY` 相同。不要提交这个值，也不要把它放进前端、沙箱镜像或日志。Python SDK 固定使用已部署版本 `opensandbox==1.1.1`，连接和执行的最小示例如下；示例镜像固定到已验收的摘要：
 
-- 停止接收业务新任务，再按实际实例清单等待结束或逐个销毁，记录清理结果。
-- `systemctl stop opensandbox` 只停止控制面，不证明已销毁 Docker 沙箱；仍需核对实例、卷和 TTL 状态。
-- 保留 `/etc/opensandbox`、版本锁与数据目录的受限备份。升级前停止控制面并备份 SQLite，不能只复制一个可能仍有 WAL 写入的数据库文件；降级前检查 schema 兼容性。
-- 回退 Docker 配置时先确认没有 runsc 实例使用它，再恢复变更前的 daemon.json，并安排维护窗口。此包不会删除共享网络、镜像、卷或其他业务资源。
+如需从可信后端经公网访问，可按仓库 `deploy/opensandbox/traefik/README.md` 中的模板配置既有 Traefik。入口使用 TLS，OpenSandbox API 仍监听 `127.0.0.1:18080`；专用 Docker 内网中的 systemd socket proxy 转发到 loopback，不对公网发布 `18080` 或 `41000–41100`。应用配置改为：
 
-## 部署后的验收清单
+```dotenv
+OPENSANDBOX_BASE_URL=https://sandbox.example.com
+OPENSANDBOX_API_KEY=<从可信私密配置或密钥管理器注入>
+```
 
-- [ ] 重新确认目标身份、数据盘挂载、Docker 根盘余量、内存与端口占用。
-- [ ] 记录 runsc 版本、包来源和实际 systrap 参数；宿主 runtime 注册及实际容器 runtime 都正确。
-- [ ] 私有 key、监听地址、文件权限与固定镜像/包版本通过校验。
-- [ ] SDK 创建、文本文件、命令结果和本次容器清理通过真实 smoke。
-- [ ] API、动态沙箱端口均未暴露到公网；通过预期的应用链路访问。
-- [ ] 测试宿主、元数据、私网与跨沙箱流量，确定是否需要独立节点或额外网络策略。
-- [ ] 覆盖应用重启重连、错误处理、任务取消、配额、产物归档和孤儿资源对账。
-- [ ] 验证机器重启后的数据挂载、控制面恢复和残留实例处理。
+Traefik 路由不会替代 OpenSandbox API key。该 key 可管理宿主机上的沙箱控制面，只能交给可信后端；不要下发给浏览器、模型或不可信用户。OpenSandbox 1.1.1 的配置说明规定，设置 `server.api_key` 后，API 请求需携带 `OPEN-SANDBOX-API-KEY` 请求头（少数文档与健康端点除外）；参见[固定版本配置文档](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.1.1/server/configuration.md)。
 
-以上条目目前均未作为远端实测通过，不应提前勾选。
+在业务后端的 Python 环境中安装 SDK：
 
-## 上游与更新
+```bash
+uv add 'opensandbox==1.1.1'
+```
 
-资料核对日期：2026-10-21。配置和 SDK 契约优先对照固定发布标签，不以 main 分支的新特性推断当前版本可用。
+```python
+import asyncio
+import os
+from datetime import timedelta
+from urllib.parse import urlparse
+
+from opensandbox import Sandbox
+from opensandbox.config import ConnectionConfig
+from opensandbox.models.execd import RunCommandOpts
+
+
+async def main() -> None:
+    endpoint = urlparse(os.environ["OPENSANDBOX_BASE_URL"])
+    if endpoint.scheme not in {"http", "https"} or not endpoint.netloc:
+        raise ValueError("OPENSANDBOX_BASE_URL must be an HTTP(S) URL")
+
+    connection = ConnectionConfig(
+        domain=endpoint.netloc,
+        protocol=endpoint.scheme,
+        api_key=os.environ["OPENSANDBOX_API_KEY"],
+        use_server_proxy=True,
+        request_timeout=timedelta(seconds=30),
+    )
+    sandbox = await Sandbox.create(
+        "python@sha256:2259debdc6af85626058a15a7bf44ad6a68b8c98c9ae82a02cf5cdb92f096d47",
+        connection_config=connection,
+        timeout=timedelta(seconds=180),
+        ready_timeout=timedelta(seconds=60),
+        resource={"cpu": "500m", "memory": "512Mi"},
+        entrypoint=["python3", "-c", "import time; time.sleep(180)"],
+    )
+    try:
+        result = await sandbox.commands.run(
+            ["python3", "-c", "print('hello from OpenSandbox')"],
+            opts=RunCommandOpts(timeout=timedelta(seconds=15)),
+        )
+        if result.exit_code != 0 or result.error is not None:
+            raise RuntimeError("sandbox command failed")
+        print("".join(message.text for message in result.logs.stdout))
+    finally:
+        try:
+            await sandbox.kill()
+        finally:
+            await sandbox.close()
+
+
+asyncio.run(main())
+```
+
+这套服务实现的是 OpenSandbox 原生 API。E2B 的 `E2B_API_URL` / `E2B_API_KEY` 不能直接指向这里：改环境变量不会转换 E2B API 请求。现有 E2B 应用需要改用 OpenSandbox SDK，或在业务端实现并维护一层 E2B 到 OpenSandbox 的适配器。
+
+如果业务程序运行在 Docker 容器里，容器内的 `127.0.0.1` 指向该业务容器本身，不能直接用它连接宿主机 loopback API。可使用可信后端访问已配置的 HTTPS hostname，或另行设计只对私有应用网络开放的内部代理；不要为了连通性把 `18080` 暴露到公网。公开 HTTPS 入口仍是单管理员 API，不包含业务用户授权、租户隔离或资源准入；面向不可信用户前必须在可信业务后端增加这些边界。
+
+## 停止、回退和更新
+
+- 停止接收新任务，逐个确认沙箱结束或销毁；`systemctl stop opensandbox` 只停止控制面，不等于销毁沙箱。
+- 回退 Docker 配置前先确认没有 `runsc` 容器依赖它；从 `/var/backups/zata-ops/opensandbox/` 选择变更前的 daemon 配置，恢复后运行 `dockerd --validate` 再热加载。不要在仍有 runsc 容器时删除 runtime 注册。
+- 回退服务时可停止并禁用 `opensandbox.service`；不要自动删除共享网络、镜像、卷、SQLite 或工作区。
+- 更新前固定新的 OpenSandbox 发布标签，重新生成服务端与 smoke 依赖哈希锁，验证配置模型和 SDK 契约，备份 SQLite 后再安排维护窗口。安装器只做首次部署，不覆盖已有部署或自动升级。
+- 数据路径变更不会迁移 Docker data-root，也不会自动搬运 SQLite 或工作区；需要单独停机、复制、校验和改配置。
+
+## 上游资料
+
+版本与配置契约以固定发布标签为准，不能用 main 分支的新特性推断当前版本行为。
 
 - [OpenSandbox 1.1.1 发布说明](https://github.com/opensandbox-group/OpenSandbox/releases/tag/release-1.1.1)
 - [1.1.1 服务端配置模型](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.1.1/server/opensandbox_server/config.py)
-- [1.1.1 SDK](https://github.com/opensandbox-group/OpenSandbox/tree/release-1.1.1/sdks/sandbox/python)
-- [运行时配置说明](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.1.1/server/configuration.md)
+- [1.1.1 Python SDK](https://github.com/opensandbox-group/OpenSandbox/tree/release-1.1.1/sdks/sandbox/python)
+- [OpenSandbox 运行时配置](https://github.com/opensandbox-group/OpenSandbox/blob/release-1.1.1/server/configuration.md)
+- [gVisor 官方 apt 安装](https://gvisor.dev/docs/user_guide/install/)
 - [gVisor 平台说明](https://gvisor.dev/docs/architecture_guide/platforms/)
+- [gVisor 网络模式与网络隔离](https://gvisor.dev/docs/user_guide/networking/)
 
-更新依赖锁的命令（仅维护者在审阅版本后执行）：
+服务端依赖锁针对 Ubuntu 24.04 / Python 3.12 / Linux x86_64，smoke SDK 有独立锁文件。维护锁文件的命令：
 
 ```bash
 uv pip compile --python-version 3.12 --python-platform x86_64-unknown-linux-gnu \
   --generate-hashes deploy/opensandbox/requirements.in \
   -o deploy/opensandbox/requirements.txt
+uv pip compile --python-version 3.12 --python-platform x86_64-unknown-linux-gnu \
+  --generate-hashes deploy/opensandbox/requirements-smoke.in \
+  -o deploy/opensandbox/requirements-smoke.txt
 ```
-
-升级需重新运行离线校验、上游配置模型解析、SDK 契约检查与实际沙箱 smoke，并在私有部署记录里更新主机 runtime 和镜像证据。

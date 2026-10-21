@@ -11,6 +11,7 @@ zata-ops 是主要面向 AI Agent 的轻量运维工具箱。通过本机私有�
 工具代码、虚构配置示例和验证规则纳入版本管理，真实运维配置保留在本机。
 服务器与应用清单已接入 `app inspect` 只读检查；变更类命令仍使用原有参数与配置。
 首次使用请阅读[私有运维配置](guides/private-inventory.md)。
+查看本机活动配置总览可运行 `just private-config-show`；凭据值不会输出。
 
 `zata-ops` provides:
 

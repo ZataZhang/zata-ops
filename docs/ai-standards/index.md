@@ -21,6 +21,9 @@
 真实服务器资产、SSH 凭据引用和应用部署信息必须维护在被 Git 忽略的私有配置中；
 仓库只提交工具实现、虚构配置示例、结构约束和使用文档。不得把真实清单写入文档、测试夹具或示例。
 当前约定与验证入口见[私有运维配置](../guides/private-inventory.md)。
+维护服务器清单时沿用公开示例的服务器 → SSH / 应用三级布局，新增或修改字段后运行
+`just inventory-format config/private/servers.toml --write`，再运行 `just inventory-check`。
+格式化会替换注释；长期信息保存到 `notes` 或私有快照，不把平铺追加当作完成维护。
 Agent 修改现有私有配置前必须运行 `just private-backup`，成功后再修改。
 出现手动复制提醒时告知用户；只有用户确认已完成复制后，才能运行 `just private-copy-done`，
 不能以生成本机备份代替用户的手动复制确认。

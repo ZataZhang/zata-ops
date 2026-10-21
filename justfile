@@ -13,6 +13,11 @@ inventory-check path="config/private/servers.toml" *args:
     uv run python scripts/diagnostics/check_inventory.py {{quote(path)}} {{args}}
     if [ {{quote(path)}} = "config/private/servers.toml" ] && [ -d config/private ]; then uv run python scripts/diagnostics/private_config_backup.py remind; fi
 
+# Check human-readable inventory layout; pass --write for backed-up formatting.
+inventory-format path="config/private/servers.toml" *args:
+    uv run python scripts/diagnostics/format_inventory.py {{quote(path)}} {{args}}
+    if [ {{quote(path)}} = "config/private/servers.toml" ] && [ -d config/private ]; then uv run python scripts/diagnostics/private_config_backup.py remind; fi
+
 # Explicit local snapshot; no network transfers or background jobs.
 private-backup:
     uv run python scripts/diagnostics/private_config_backup.py backup
@@ -24,6 +29,10 @@ private-backup-reminder:
 # Run only after the user confirms a manual copy has been completed.
 private-copy-done:
     uv run python scripts/diagnostics/private_config_backup.py acknowledge
+
+# Show active private configuration with credential values withheld.
+private-config-show:
+    uv run python scripts/diagnostics/private_config_report.py
 
 # Credential values are entered interactively, never as command arguments.
 secret-set name:
@@ -47,6 +56,10 @@ service-show name:
 # Offline example policy check; no network, no server startup.
 opensandbox-check:
     uv run python scripts/opensandbox/prepare.py validate --config deploy/opensandbox/config.example.toml --env-file deploy/opensandbox/server.env.example --example
+
+# Create a new ignored host profile and API key without displaying the key.
+opensandbox-configure data_root="/var/lib/opensandbox" output_dir="config/private/opensandbox":
+    uv run python scripts/opensandbox/configure.py --data-root {{quote(data_root)}} --output-dir {{quote(output_dir)}}
 
 # Offline smoke plan; live creation requires an explicit separate command.
 opensandbox-smoke-plan:
