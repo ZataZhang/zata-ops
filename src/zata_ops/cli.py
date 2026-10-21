@@ -1,6 +1,6 @@
 """Top-level Typer entry point for the ``zata-ops`` CLI.
 
-Mounts ``db``, ``env``, ``logs`` and ``dashboard`` sub-applications. Run
+Mounts application inspection and operational sub-applications. Run
 ``zata-ops --help`` after installing via ``uv tool install`` for an overview.
 """
 
@@ -11,6 +11,7 @@ from typing import Optional
 import typer
 
 from zata_ops import __version__
+from zata_ops.app import cli as application_cli
 from zata_ops.db import cli as db_cli
 from zata_ops.env import cli as env_cli
 from zata_ops.logs import cli as logs_cli
@@ -20,12 +21,16 @@ from zata_ops.tunnel import cli as tunnel_cli
 app: typer.Typer = typer.Typer(
     name="zata-ops",
     help=(
-        "Operations toolkit for Zata downstream projects. "
-        "Provides db backup/restore, S3 diagnostics, VPS provisioning, "
+        "Lightweight operations toolkit for AI agents. "
+        "Provides inventory-driven app inspection, db backup/restore, VPS provisioning, "
         "log inspection, and a terminal dashboard."
     ),
     no_args_is_help=True,
     add_completion=False,
+)
+
+app.add_typer(
+    application_cli.app, name="app", help="Inspect applications from private inventory."
 )
 
 app.add_typer(

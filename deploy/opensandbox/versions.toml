@@ -1,0 +1,7 @@
+# Source inspection and OCI manifest lookup: 2026-10-21. Not a live deployment.
+upstream_release = "release-1.1.1"
+server_package = "opensandbox-server==1.1.1"
+sdk_package = "opensandbox==1.1.1"
+execd_image = "opensandbox/execd@sha256:cda2bc35409bbf57561599b316cafb899598f7dce671332e7ceda14eb1cfeded"
+# Host runsc version and workload digest must be recorded at deployment.
+runsc_version = "UNVERIFIED_ON_TARGET"

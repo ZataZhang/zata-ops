@@ -12,7 +12,7 @@ zata-ops 是主要面向 AI Agent 的轻量运维工具箱。通过本机私有�
 - **工具与私有配置分开**：工具代码、虚构示例和验证规则纳入版本管理；真实服务器地址、SSH 凭据引用和应用部署清单保留在本机被 Git 忽略的配置中。
 
 目前提供数据库备份与恢复、S3 连通性检查、VPS 环境初始化、日志查看、SSH 隧道管理与终端状态面板。
-服务器与应用清单目前支持记录和本地验证，尚未接入 CLI 自动化操作。配置方式见[私有运维配置](docs/guides/private-inventory.md)。
+服务器与应用清单已接入 `app inspect` 只读检查；变更类命令仍使用原有参数与配置。配置方式见[私有运维配置](docs/guides/private-inventory.md)。
 
 ---
 
@@ -93,6 +93,16 @@ zata-ops db restore --from 2026-06-07_180000 --restore-db --yes
 ## 命令参考
 
 执行 `zata-ops <command> --help` 查看每个子命令的完整参数。
+
+### 应用现场检查 `app inspect`
+
+```bash
+zata-ops app inspect my-app --server my-server --dry-run
+zata-ops app inspect my-app --server my-server
+```
+
+从私有清单定位实例，独立检查 SSH、运行状态和 HTTP，输出 JSON。未知状态不会当作成功，
+同名应用须显式指定服务器。支持 Docker Compose 与 systemd，详见[应用现场检查](docs/guides/application-inspection.md)。
 
 ### 数据库 `db`
 
@@ -181,6 +191,10 @@ zata-ops tunnel close db-access
 
 ## 配置项
 
+数据库和服务凭据通过[服务与凭据管理](docs/guides/private-secrets.md)中的脚本维护：
+`just service-add` 引导登记服务并隐藏输入密码，`just service-list` 查看连接信息及凭据配置状态；
+使用时按服务名把密码注入可信子进程。底层 `secret-set` / `secret-list` 仍支持独立凭据。
+
 服务器资产、SSH 密钥引用和应用部署清单采用本机私有配置：复制
 `config/servers.example.toml` 到被 Git 忽略的 `config/private/servers.toml`，
 填写后运行 `just inventory-check`。详见[私有运维配置](docs/guides/private-inventory.md)。
@@ -217,6 +231,15 @@ backup:
 restore ts:
     zata-ops db restore --from {{ts}} --restore-db --yes
 ```
+
+---
+
+## OpenSandbox 远程部署准备
+
+已提供 OpenSandbox + Docker + gVisor 的[准备包](deploy/opensandbox/README.md)：
+固定版本配置、独立控制面 systemd unit、只读预检查和显式创建的 SDK smoke。
+`just opensandbox-check` 与 `just opensandbox-smoke-plan` 仅做离线检查。
+当前未部署到服务器，完整步骤与尚待远端验收项见[部署指南](docs/guides/opensandbox.md)。
 
 ---
 

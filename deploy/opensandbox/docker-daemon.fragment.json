@@ -1,0 +1,8 @@
+{
+  "runtimes": {
+    "runsc": {
+      "path": "/usr/bin/runsc",
+      "runtimeArgs": ["--platform=systrap", "--network=host", "--overlay2=none"]
+    }
+  }
+}

@@ -9,10 +9,12 @@ zata-ops 是主要面向 AI Agent 的轻量运维工具箱。通过本机私有�
 网页控制台、常驻管理服务和多用户权限暂不作为建设重点。
 
 工具代码、虚构配置示例和验证规则纳入版本管理，真实运维配置保留在本机。
-服务器与应用清单目前支持记录和本地验证，尚未接入 CLI 自动化操作。
+服务器与应用清单已接入 `app inspect` 只读检查；变更类命令仍使用原有参数与配置。
 首次使用请阅读[私有运维配置](guides/private-inventory.md)。
 
 `zata-ops` provides:
+
+- `app inspect` — inventory-driven SSH, runtime and HTTP observations with JSON evidence; see [应用现场检查](guides/application-inspection.md).
 
 - `db backup` / `db restore` / `db list` — backups to any S3-compatible store.
 - `db check` — S3 connectivity diagnostic.

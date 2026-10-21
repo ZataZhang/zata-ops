@@ -1,0 +1,26 @@
+[Unit]
+Description=OpenSandbox gVisor lifecycle server (private pilot)
+Requires=docker.service
+After=network-online.target docker.service
+Wants=network-online.target
+RequiresMountsFor=/mnt/data
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/mnt/data/opensandbox/control-plane
+EnvironmentFile=/etc/opensandbox/server.env
+Environment=HOME=/mnt/data/opensandbox/control-plane
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/opt/opensandbox/venv/bin/python /opt/opensandbox/tools/prepare.py validate --config /etc/opensandbox/config.toml --env-file /etc/opensandbox/server.env
+ExecStart=/opt/opensandbox/venv/bin/opensandbox-server --config /etc/opensandbox/config.toml
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+TimeoutStopSec=45
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

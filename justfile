@@ -11,6 +11,46 @@ import 'justfile.shared'
 # Validate private operational inventory without connecting to servers.
 inventory-check path="config/private/servers.toml" *args:
     uv run python scripts/diagnostics/check_inventory.py {{quote(path)}} {{args}}
+    if [ {{quote(path)}} = "config/private/servers.toml" ] && [ -d config/private ]; then uv run python scripts/diagnostics/private_config_backup.py remind; fi
+
+# Explicit local snapshot; no network transfers or background jobs.
+private-backup:
+    uv run python scripts/diagnostics/private_config_backup.py backup
+
+# Check whether the user should manually copy private configuration elsewhere.
+private-backup-reminder:
+    uv run python scripts/diagnostics/private_config_backup.py remind
+
+# Run only after the user confirms a manual copy has been completed.
+private-copy-done:
+    uv run python scripts/diagnostics/private_config_backup.py acknowledge
+
+# Credential values are entered interactively, never as command arguments.
+secret-set name:
+    uv run python scripts/diagnostics/private_secrets.py set {{quote(name)}}
+
+# Show credential names only.
+secret-list:
+    uv run python scripts/diagnostics/private_secrets.py list
+
+# Register a complete service with a separately stored hidden password.
+service-add:
+    uv run python scripts/diagnostics/private_services.py add
+
+# Show connection metadata and password availability, never password values.
+service-list:
+    uv run python scripts/diagnostics/private_services.py list
+
+service-show name:
+    uv run python scripts/diagnostics/private_services.py show {{quote(name)}}
+
+# Offline example policy check; no network, no server startup.
+opensandbox-check:
+    uv run python scripts/opensandbox/prepare.py validate --config deploy/opensandbox/config.example.toml --env-file deploy/opensandbox/server.env.example --example
+
+# Offline smoke plan; live creation requires an explicit separate command.
+opensandbox-smoke-plan:
+    uv run python scripts/opensandbox/smoke.py
 
 # Run the development entrypoint for zata-ops: backend (FastAPI) + two frontends.
 # Usage:

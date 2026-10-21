@@ -38,12 +38,15 @@ nav:
   - 快速开始: getting-started.md
   - 使用指南:
       - 私有运维配置: guides/private-inventory.md
+      - 服务与凭据管理: guides/private-secrets.md
+      - 应用现场检查: guides/application-inspection.md
       - 备份、恢复与迁移: guides/backup-and-restore.md
       - 调度示例: guides/scheduling.md
       - VPS 初始化: guides/vps-provisioning.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md
       - 本地 E2B Embed 沙箱: guides/e2b-embed.md
+      - OpenSandbox 部署准备: guides/opensandbox.md
   - 系统架构:
       - 系统设计: architecture/system-design.md
       - 监控栈: architecture/monitoring-stack.md

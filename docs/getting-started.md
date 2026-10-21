@@ -34,7 +34,7 @@ WORK_DIR=/tmp/backups
 `config/private/servers.toml`，整个 `config/private/` 目录由 Git 忽略。
 清单记录服务器地址、规格、地域、SSH 密钥路径及应用的域名、端口、部署目录等信息；
 未知字段留空，应用盘点状态单独记录。密钥仅记录路径或凭据引用。
-此清单目前独立维护，CLI 不会自动读取。
+`app inspect` 会读取此清单，其他命令仍使用各自参数与 `.env` 配置。
 首次配置、字段约定与验证命令见[私有运维配置](guides/private-inventory.md)。
 
 ## 3. Dry run

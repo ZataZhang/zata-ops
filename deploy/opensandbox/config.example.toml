@@ -1,0 +1,43 @@
+# Owned deployment profile; schema baseline: OpenSandbox release-1.1.1.
+# Host-native lifecycle server, gVisor-only sandboxes, no public listener.
+[server]
+host = "127.0.0.1"
+port = 18080
+max_sandbox_timeout_seconds = 900
+
+[proxy]
+resolve_internal = true
+
+[log]
+level = "INFO"
+file_enabled = false
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd@sha256:cda2bc35409bbf57561599b316cafb899598f7dce671332e7ceda14eb1cfeded"
+
+[secure_runtime]
+type = "gvisor"
+docker_runtime = "runsc"
+
+[store]
+type = "sqlite"
+path = "/mnt/data/opensandbox/control-plane/opensandbox.db"
+
+[storage]
+allowed_host_paths = ["/mnt/data/opensandbox/workspaces"]
+
+[docker]
+network_mode = "zata-ops-sandbox-isolated"
+publish_host = "127.0.0.1"
+port_range_min = 41000
+port_range_max = 41100
+no_new_privileges = true
+pids_limit = 256
+drop_capabilities = ["ALL"]
+
+[ingress]
+mode = "direct"
+
+[renew_intent]
+enabled = false

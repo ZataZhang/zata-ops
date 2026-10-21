@@ -1,0 +1,15 @@
+# Metadata only. Store real credentials in ignored config/private/secrets.env.
+# Use just service-add to register a real service interactively.
+schema_version = 1
+
+[[services]]
+name = "main-postgres"
+server = "example-server"
+type = "postgresql"
+host = "10.0.0.10"
+port = 5432
+database = "app"
+username = "app_user"
+url = ""
+password_env = "MAIN_POSTGRES_PASSWORD"
+notes = "Example database; no passwords or credential-bearing URLs here."
