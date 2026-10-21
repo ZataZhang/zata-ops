@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "zata-ops"
 version = "0.1.0"
-description = "Operations toolkit CLI for Zata downstream projects (db backup/restore, S3 diagnostics, VPS provisioning, logs, dashboard)."
+description = "Lightweight operations toolkit for AI agents, with private local inventory and CLI tools for database backups, VPS provisioning, logs, and SSH tunnels."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

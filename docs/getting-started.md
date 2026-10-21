@@ -28,6 +28,15 @@ RESOURCES_DIR=/var/data/my-app
 WORK_DIR=/tmp/backups
 ```
 
+## 私有运维清单
+
+服务器资产和应用部署清单属于本机私有运维配置，保存于
+`config/private/servers.toml`，整个 `config/private/` 目录由 Git 忽略。
+清单记录服务器地址、规格、地域、SSH 密钥路径及应用的域名、端口、部署目录等信息；
+未知字段留空，应用盘点状态单独记录。密钥仅记录路径或凭据引用。
+此清单目前独立维护，CLI 不会自动读取。
+首次配置、字段约定与验证命令见[私有运维配置](guides/private-inventory.md)。
+
 ## 3. Dry run
 
 ```bash

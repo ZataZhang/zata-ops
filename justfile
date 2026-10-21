@@ -8,6 +8,10 @@
 
 import 'justfile.shared'
 
+# Validate private operational inventory without connecting to servers.
+inventory-check path="config/private/servers.toml" *args:
+    uv run python scripts/diagnostics/check_inventory.py {{quote(path)}} {{args}}
+
 # Run the development entrypoint for zata-ops: backend (FastAPI) + two frontends.
 # Usage:
 #   just run                         # backend + frontend-admin + frontend-public

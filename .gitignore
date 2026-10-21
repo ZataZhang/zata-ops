@@ -11,6 +11,8 @@ wheels/
 
 # Logs
 logs/
+# Local operational inventory and private configuration
+/config/private/
 *.log
 *.env
 npm-debug.log*

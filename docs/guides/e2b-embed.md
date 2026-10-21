@@ -67,3 +67,41 @@ VM 保持运行。不要使用 `docker compose down -v` 或 E2B 的 host teardow
 [E2B runtime 官方仓库](https://github.com/e2b-dev/runtime) 中的 Compose 与配置变更，更新
 `local/e2b-embed/compose.yaml`、`local/e2b-embed/e2b-embed.env.example`，并同步更新
 `scripts/e2b_embed.sh` 中固定的源码提交。
+
+## 故障排查
+
+### 模板构建极慢或看似卡住（宿主代理未开 TUN）
+
+**症状**（2026-10-08 实测）：
+
+- `e2b_embed.sh up` 构建应用模板时在 pip 步骤长时间停滞，日志停在
+  `Downloading numpy-...whl (13.9 MB)` 之类的行几分钟不动；
+- 或 pip 以 `THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE`
+  失败（慢速/中断的下载产生损坏的包文件）；
+- Lima VM 出口带宽只有 **几十 KB/s**，而同一 Dockerfile 在宿主 Docker 里两分钟就建完。
+
+**根因**：构建链路是 `Firecracker 构建机 → Embed 的 HTTP 代理 → Lima VM → 宿主`。宿主代理
+（如 Clash）**未开启 TUN 模式/虚拟网卡**时，Lima VM 的出站流量走默认 NAT 直连，实际带宽
+被压到几十 KB/s；apt 与 pip 全量下载数十 MB（numpy/scipy/pandas 的 aarch64 wheel）按此
+带宽要 30 分钟以上，之后还有 rootfs 快照。整个链路没有任何「构建失败/重试」提示，日志也
+不滚动——看起来像卡死，其实在极慢地下载。
+
+**诊断**（在 Lima VM 里测速，这是构建机真正走的路径）：
+
+```bash
+limactl shell zata-e2b-embed -- curl -s -o /dev/null --max-time 15 \
+  -w "%{speed_download} B/s\n" "https://speed.cloudflare.com/__down?bytes=5000000"
+```
+
+几十 KB/s = 代理未生效；MB/s 量级 = 正常（可对照宿主机同条命令）。
+
+**修复**：开启 Clash（或等效代理）的 **TUN 模式/虚拟网卡**，然后重新运行
+`e2b_embed.sh up`。构建层缓存保留，apt 层会命中缓存，pip 在快路径下几十秒完成——实测
+开 TUN 后构建本体 50 秒、smoke check 通过。**改完代理无需重启 Lima VM。**
+
+**排查时的两个提示**：
+
+- 构建日志经 SDK 的 `on_build_logs` 打到 **stderr**，`| tail` 会缓冲到进程结束才输出；
+  观察进度请把 stderr 重定向到文件再 `tail -f`。
+- 失败的构建也会注册模板别名（`Template.exists` 为真）；`build_e2b_embed_app_template.py`
+  会自动改用 `zata-assistant-runtime-arm64-retry-N-<hash>` 别名重建，别名累积无害。
