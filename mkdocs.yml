@@ -43,6 +43,7 @@ nav:
       - 备份、恢复与迁移: guides/backup-and-restore.md
       - 调度示例: guides/scheduling.md
       - VPS 初始化: guides/vps-provisioning.md
+      - Nacos 开发与远程部署准备: guides/nacos.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md
       - 本地 E2B Embed 沙箱: guides/e2b-embed.md

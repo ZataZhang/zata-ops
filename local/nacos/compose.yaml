@@ -1,0 +1,35 @@
+services:
+  nacos:
+    image: nacos/nacos-server:${NACOS_VERSION:-v3.2.4}
+    container_name: zata-ops-nacos-dev
+    environment:
+      MODE: standalone
+      FUNCTION_MODE: microservice
+      PREFER_HOST_MODE: ip
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_SYSTEM_TYPE: nacos
+      NACOS_AUTH_ADMIN_ENABLE: "true"
+      NACOS_AUTH_CONSOLE_ENABLE: "true"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?Set NACOS_AUTH_TOKEN in local/nacos/.env}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:?Set NACOS_AUTH_IDENTITY_KEY in local/nacos/.env}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?Set NACOS_AUTH_IDENTITY_VALUE in local/nacos/.env}
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848"
+    volumes:
+      - nacos-data:/home/nacos/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nacos-data:
+    name: zata-ops-nacos-dev-data
+
+networks:
+  default:
+    name: zata-ops-nacos-dev
