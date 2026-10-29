@@ -1,6 +1,6 @@
 # OpenSandbox + Docker + gVisor 部署指南
 
-仓库提供固定版本配置、签名源安装脚本、主机预检查、systemd 服务和真实 SDK 冒烟脚本。安装器支持 Ubuntu 24.04 x86_64、Python 3.12、systemd 与已运行的 Docker；不会安装或替换 Docker，也不会开放公网入口。
+仓库提供固定版本配置、签名源安装脚本、主机预检查、systemd 服务和真实 SDK 冒烟脚本。安装器支持 Ubuntu 24.04 x86_64、Python 3.12、systemd 与已运行的 Docker；不会安装或替换 Docker，安装器本身也不会开放公网入口。已部署环境如需公网访问，另按本文「经公网访问」一节的 Traefik 模板配置；**当前环境已按该模板暴露 HTTPS 入口，具体域名与服务器记录用 `just private-config-show` 查看（应用清单里的 `url` 字段），不要凭「只绑定 loopback」推断只能走 SSH 隧道。**
 
 默认数据目录是 `/var/lib/opensandbox`。有独立数据盘时，可指定 `/mnt/data/opensandbox` 或其他以 `opensandbox` 结尾的绝对路径，并通过 `--require-mountpoint` 要求目标挂载点已经挂载。安装器会检查内存、Docker 数据目录空间、数据目录空间、端口和现有服务。
 
@@ -179,7 +179,7 @@ sudo /opt/opensandbox/smoke-venv/bin/python \
 
 SDK 只能由可信业务后端调用，管理员 key 不下发到前端。应用只从允许列表选择镜像/profile；入口检查任务归属、资源预算、超时和并发，并在结束后归档产物。不要把镜像、volume、entrypoint 或 runtime 扩展原样暴露给不可信调用者。
 
-API 仍只绑定 loopback。管理工作站通过 SSH 隧道访问，不直接开放服务器公网端口：
+OpenSandbox API 进程本身只绑定 loopback。未配置 Traefik 时，管理工作站通过 SSH 隧道访问；已按下文模板配置 HTTPS 入口的环境，可直接使用该入口（仍需 API key）：
 
 ```bash
 ssh -N -L 18080:127.0.0.1:18080 user@server
@@ -262,6 +262,62 @@ asyncio.run(main())
 
 如果业务程序运行在 Docker 容器里，容器内的 `127.0.0.1` 指向该业务容器本身，不能直接用它连接宿主机 loopback API。可使用可信后端访问已配置的 HTTPS hostname，或另行设计只对私有应用网络开放的内部代理；不要为了连通性把 `18080` 暴露到公网。公开 HTTPS 入口仍是单管理员 API，不包含业务用户授权、租户隔离或资源准入；面向不可信用户前必须在可信业务后端增加这些边界。
 
+## 性能基线与容量
+
+2026-10-21 在一台 Ubuntu 24.04、2 vCPU、7.5 GiB（无 /dev/kvm）、runsc release-20261012.0 的
+试点机上实测。目的不是给绝对值，而是分清「服务器慢」和「链路慢」——两者处置方式完全不同。
+
+服务端动作耗时（systemd journal 聚合，单位 ms，取近两小时最大值）：
+
+| 动作 | 耗时 |
+|---|---|
+| 创建沙箱容器 | 73 |
+| 启动沙箱容器 | 278 |
+| 复制 execd 归档 | 77 |
+| 复制 bwrap / launcher / session gate | 20 / 16 / 15 |
+| 杀容器 / 删容器 | 127 / 46 |
+
+即创建工作本身约 0.5s。实测期间宿主 load 0.08、steal 0，`python:3.12-slim` 与
+`opensandbox/execd` 镜像已在本地，创建不触发拉取。
+
+单条命令的固定开销：在宿主机 loopback 直接请求 `/v1/sandboxes/<id>/proxy/44772/command`，
+首字节 10ms，但请求总时长约 220ms。这 210ms 的尾巴在 server proxy 与 execd 的流式收尾
+路径上，与网络、与 CPU 都无关，是当前版本的地板。
+
+同地域调用（生产后端所在主机到控制面 RTT 3.2ms、0 丢包）：`/health` 30–300ms（受 DNS
+抖动影响），命令 250–290ms/条。跨境调用（中国大陆开发机，RTT 266ms、25% 丢包）：
+`/health` 1.5–3.0s，创建 5.8–29.8s，命令 0.6–2.3s；差异主要来自 TCP 重传退避，而不是
+服务端处理时间。
+
+结论与容量判断：
+
+- 2 vCPU / 8 GiB 不是瓶颈：创建只消耗约 0.5s 的 CPU 工作，实测期间 load 始终 < 0.1。
+- 想加快创建，先改善调用端到控制面的链路（同地域部署），加机器无效。
+- 单条命令约 220ms 的地板只能靠改服务端流式收尾行为降低；判断是否改善时，以宿主 loopback 的
+  220ms 作为基线，不要用跨境的客户端数字。
+- warm pool（`/pools`）是 K8s PodTemplate 语义，当前 Docker + gVisor 后端不适用，不能当作
+  本部署的冷启动优化项。
+
+复现基线（需要一个存活沙箱的 `<id>` 与控制面 API key）：
+
+```bash
+# 服务端动作耗时
+journalctl -u opensandbox --since "-2h" --no-pager | grep -o "action=.*duration=[0-9.]*"
+
+# 单条命令地板（在宿主机上执行）
+curl -s -o /dev/null -w "ttfb=%{time_starttransfer} total=%{time_total}\n" -X POST \
+  -H "OPEN-SANDBOX-API-KEY: $KEY" -H "Content-Type: application/json" \
+  -d '{"command":"true"}' \
+  http://127.0.0.1:18080/v1/sandboxes/$SANDBOX_ID/proxy/44772/command
+```
+
+**基线不跨版本沿用：** 更换 provider、沙箱镜像、OpenSandbox 服务端或 execd 版本、宿主机乃至
+地域后，本节的创建耗时与命令地板都要重新采集并更新，不能直接引用旧数字。判断是否改善时以
+宿主 loopback 的当前值对照，不要拿跨境客户端的数字互比。
+
+**接入进度（2026-10-21 观测）：** ai-assistant 线上两个后端容器仍分别使用 `e2b` 与 `docker`
+档，容器内未安装 `opensandbox` SDK，也没有 `OPENSANDBOX_API_KEY`。切换 provider 前需重建
+镜像；上面的数字是在控制面同地域主机上测得，不代表已上线路径。
 ## 停止、回退和更新
 
 - 停止接收新任务，逐个确认沙箱结束或销毁；`systemctl stop opensandbox` 只停止控制面，不等于销毁沙箱。

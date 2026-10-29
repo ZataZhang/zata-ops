@@ -33,6 +33,7 @@
 
 - 服务器、SSH 引用和应用部署信息：`config/private/servers.toml`。
 - 数据库、缓存及其他开发服务的 URL、用户名和凭据关联：使用 `just service-list` / `just service-show <名称>`；底层元数据在 `config/private/services.toml`。
+- OpenSandbox 等已部署服务的访问地址：运行 `just private-config-show`，在对应服务器的应用清单里找 `url` 字段；先完整看一遍该应用记录，不要只按关键词过滤输出。
 - 密码与 Token 保存在 `config/private/secrets.env`。不要直接读取或打印该文件；按指南将凭据注入可信命令。列表与详情只显示凭据是否已配置，不显示密码。
 
 `just service-*` 是现有管理入口，`zata-ops --help` 目前没有统一的私有资产管理命令。清单描述登记信息；用户询问服务此刻是否可用时，需要另做实时检查并说明核验时间。

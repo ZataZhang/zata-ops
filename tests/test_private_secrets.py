@@ -161,3 +161,115 @@ def test_refuse_public_directory_and_symlink(credential_dir, tmp_path):
         == 1
     )
     assert external_path.read_text(encoding="utf-8") == "unchanged"
+
+
+def test_show_output_redacts_values_and_keeps_other_text(credential_dir):
+    token_value = "synthetic-token-value-1234"
+    _run(credential_dir, ["set", "TEST_TOKEN", "--stdin"], input_text=token_value)
+    child_script = (
+        "import os,sys; token=os.environ['TEST_TOKEN']; "
+        "print('visible-line'); print('token=' + token); "
+        "print('err=' + token, file=sys.stderr); sys.exit(3)"
+    )
+    executed = _run(
+        credential_dir,
+        [
+            "run",
+            "--env",
+            "TEST_TOKEN",
+            "--show-output",
+            "--",
+            sys.executable,
+            "-c",
+            child_script,
+        ],
+    )
+    assert executed.returncode == 3
+    assert token_value not in executed.stdout + executed.stderr
+    assert "visible-line" in executed.stdout
+    assert "token=***" in executed.stdout
+    assert "err=***" in executed.stdout
+    assert "exit=3" in executed.stdout
+
+
+def test_show_output_refuses_short_credentials_without_launching(
+    credential_dir, tmp_path
+):
+    _run(credential_dir, ["set", "TEST_TOKEN", "--stdin"], input_text="short")
+    marker = tmp_path / "launched"
+    executed = _run(
+        credential_dir,
+        [
+            "run",
+            "--env",
+            "TEST_TOKEN",
+            "--show-output",
+            "--",
+            sys.executable,
+            "-c",
+            f"open({str(marker)!r}, 'w').close()",
+        ],
+    )
+    assert executed.returncode == 1
+    assert not marker.exists()
+
+
+def test_cwd_option_sets_working_directory_and_rejects_missing(
+    credential_dir, tmp_path
+):
+    _run(
+        credential_dir,
+        ["set", "TEST_TOKEN", "--stdin"],
+        input_text="synthetic-token-value-1234",
+    )
+    executed = _run(
+        credential_dir,
+        [
+            "run",
+            "--env",
+            "TEST_TOKEN",
+            "--cwd",
+            str(tmp_path),
+            "--show-output",
+            "--",
+            sys.executable,
+            "-c",
+            "import os; print(os.getcwd())",
+        ],
+    )
+    assert executed.returncode == 0
+    assert str(tmp_path.resolve()) in executed.stdout
+    missing = _run(
+        credential_dir,
+        [
+            "run",
+            "--env",
+            "TEST_TOKEN",
+            "--cwd",
+            str(tmp_path / "nope"),
+            "--",
+            sys.executable,
+            "-c",
+            "pass",
+        ],
+    )
+    assert missing.returncode == 1
+
+
+def test_default_run_still_suppresses_output(credential_dir):
+    token_value = "synthetic-token-value-1234"
+    _run(credential_dir, ["set", "TEST_TOKEN", "--stdin"], input_text=token_value)
+    executed = _run(
+        credential_dir,
+        [
+            "run",
+            "--env",
+            "TEST_TOKEN",
+            "--",
+            sys.executable,
+            "-c",
+            "import os; print('only-child-visible-marker')",
+        ],
+    )
+    assert "only-child-visible-marker" not in executed.stdout + executed.stderr
+    assert "output suppressed" in executed.stdout

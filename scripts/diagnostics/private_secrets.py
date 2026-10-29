@@ -17,6 +17,9 @@ from private_config_backup import create_backup
 
 
 SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
+REDACTION_MARKER = "***"
+# 过短的凭据做字面替换会误伤普通输出，也无法可信地屏蔽，因此拒绝放开输出。
+MIN_REDACTABLE_LENGTH = 8
 
 
 def credential_status(secret_path: Path) -> dict[str, bool]:
@@ -143,21 +146,48 @@ def store_secret(secret_path: Path, name: str, value: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
+def redact_output(output_text: str, secret_values: list[str]) -> str:
+    """Replace every literal occurrence of each credential value.
+
+    Args:
+        output_text: Child output decoded as text.
+        secret_values: Injected credential values, longest replaced first.
+
+    Returns:
+        Output with each value replaced by the redaction marker.
+    """
+    redacted_text = output_text
+    for secret_value in sorted(secret_values, key=len, reverse=True):
+        redacted_text = redacted_text.replace(secret_value, REDACTION_MARKER)
+    return redacted_text
+
+
 def run_with_credentials(
-    secret_path: Path, bindings: dict[str, str], command: list[str]
+    secret_path: Path,
+    bindings: dict[str, str],
+    command: list[str],
+    *,
+    working_directory: Path | None = None,
+    show_redacted_output: bool = False,
 ) -> int:
-    """Inject selected credentials and suppress child output.
+    """Inject selected credentials and suppress or redact child output.
 
     Args:
         secret_path: Private dotenv file.
         bindings: Destination environment names mapped to stored references.
         command: Command argument vector, without shell evaluation.
+        working_directory: Directory the child runs in; defaults to the caller's.
+        show_redacted_output: Print child stdout/stderr with injected values
+            replaced by ``***`` instead of suppressing it. Literal matching only:
+            a child that re-encodes a value (base64, URL escaping, splitting) can
+            still leak it, so use this only with trusted commands.
 
     Returns:
         Child exit status, normalized to one for termination by signal.
 
     Raises:
-        ValueError: Command, environment name, or credential is missing.
+        ValueError: Command, environment name, credential or directory is missing,
+            or a credential is too short to redact reliably.
         OSError: Process cannot start or credentials cannot be read.
     """
     credentials = dotenv_values(secret_path, interpolate=False, encoding="utf-8")
@@ -166,18 +196,40 @@ def run_with_credentials(
         for name, reference in bindings.items()
     ):
         raise ValueError("missing command or credential")
+    if working_directory is not None and not working_directory.is_dir():
+        raise ValueError("working directory does not exist")
+    injected_values = [credentials[reference] for reference in bindings.values()]
+    if show_redacted_output and any(
+        len(injected_value) < MIN_REDACTABLE_LENGTH
+        for injected_value in injected_values
+    ):
+        raise ValueError("credential too short to redact")
     process_environment = os.environ.copy()
     process_environment.update(
         {name: credentials[reference] for name, reference in bindings.items()}
     )
+    if not show_redacted_output:
+        completed = subprocess.run(
+            command,
+            env=process_environment,
+            cwd=working_directory,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print(f"Command finished; exit={completed.returncode}; output suppressed.")
+        return completed.returncode if completed.returncode >= 0 else 1
     completed = subprocess.run(
         command,
         env=process_environment,
+        cwd=working_directory,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
-    print(f"Command finished; exit={completed.returncode}; output suppressed.")
+    child_output = completed.stdout.decode("utf-8", errors="replace")
+    print(redact_output(child_output, injected_values), end="")
+    print(f"Command finished; exit={completed.returncode}; values redacted.")
     return completed.returncode if completed.returncode >= 0 else 1
 
 
@@ -197,9 +249,17 @@ def main() -> int:
     )
     commands.add_parser("list", help="List names only")
     run_parser = commands.add_parser(
-        "run", help="Inject named credentials; suppress child output"
+        "run", help="Inject named credentials; suppress or redact child output"
     )
     run_parser.add_argument("--env", action="append", required=True, dest="names")
+    run_parser.add_argument(
+        "--cwd", type=Path, default=None, help="Directory the command runs in"
+    )
+    run_parser.add_argument(
+        "--show-output",
+        action="store_true",
+        help="Print child output with injected values replaced by ***",
+    )
     run_parser.add_argument("command", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
     try:
@@ -233,7 +293,11 @@ def main() -> int:
         if command[:1] == ["--"]:
             command = command[1:]
         return run_with_credentials(
-            secret_path, {name: name for name in names}, command
+            secret_path,
+            {name: name for name in names},
+            command,
+            working_directory=arguments.cwd,
+            show_redacted_output=arguments.show_output,
         )
     except (OSError, ValueError, getpass.GetPassWarning):
         print(

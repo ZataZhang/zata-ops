@@ -93,6 +93,44 @@ uv run python scripts/diagnostics/private_secrets.py run --env MAIN_POSTGRES_PAS
 默认屏蔽子进程 stdout、stderr 和交互输入，只显示退出状态，并返回子进程退出码；输入/存储错误返回 `1`。
 不直接使用 `.env` 的变量展开规则，密码中的 `${...}` 保持原值。
 
+### 凭据命名约定：存的名字就是下游读的环境变量名
+
+`--env` 注入时环境变量名保持不变，所以第三方服务的 API key 应直接按下游程序要读的名字保存，
+例如 `OPENSANDBOX_API_KEY`、`E2B_API_KEY`。不要为同一个 key 另起内部别名再改名。
+服务地址不进凭据库：已登记的服务器和应用地址用 `just private-config-show` 查看（应用清单的 `url` 字段）。
+OpenSandbox 的 API key 应登记为 `OPENSANDBOX_API_KEY`（用户在本机终端运行
+`just secret-set OPENSANDBOX_API_KEY`，Agent 不读取、不转述）；原先放在
+`config/private/opensandbox/*/server.env` 的服务端副本仍用于部署，不受影响。
+
+### 不要把管理员 key 留在会被复制的 `.env.local` 里
+
+下游项目的 worktree 脚本通常会把仓库内所有 `.env*` 文件复制进新工作树（例如 freshai 的
+`scripts/shared/worktree/create.sh`，keda 的 runner 就在这些工作树里运行 Agent）。
+放在 `.env.local` 里的 key 因此会出现在每个新工作树里，被其中的 Agent 读到，
+这与「管理员 key 不交给模型」相冲突。
+
+- **默认做法**：key 只留在本仓库的 `secrets.env`，需要时用 `run --env` 注入子进程，不写进下游项目的任何 `.env*` 文件。
+- **必须放进下游 `.env.local` 时**（例如本机开发服务要常驻读取）：由用户明确决定，并在使用该 key 的 PRD 或设计文档的风险一节记下「已知并接受」及日期；key 值不得出现在证据文件、日志、PR 评论和提交里。
+- 服务地址不是密钥，可以放进下游 `.env.local`。
+- 查某个下游项目是否会复制 `.env*`：`rg -n "\.env" <项目>/scripts/shared/worktree/`。
+
+### 让下游项目使用凭据，并保留可核验的输出
+
+默认屏蔽全部子进程输出，只显示退出状态。需要保留测试或命令的输出作为证据时，加 `--show-output`：
+输出中出现的注入值会被替换为 `***`，其余文本原样保留；`--cwd` 指定命令的工作目录，
+这样可以在另一个项目目录里运行命令：
+
+```bash
+uv run python scripts/diagnostics/private_secrets.py run \
+  --env OPENSANDBOX_API_KEY --cwd ../freshai --show-output -- \
+  env OPENSANDBOX_BASE_URL=https://sandbox.example.com OPENSANDBOX_LIVE=1 \
+  uv run pytest tests/infrastructure/sandbox/test_sandbox_live.py -q
+```
+
+限制：只做**字面**替换。子进程若把值再编码（base64、URL 转义、拆分后输出）仍会泄漏，
+所以只对可信命令使用；少于 8 个字符的凭据无法可靠屏蔽，`--show-output` 会直接拒绝运行。
+这不是访问控制边界，也不阻止同一用户或 Agent 读取 `secrets.env` 文件本身。
+
 只运行可信命令：目标进程能够读取注入值，仍可能写文件或通过网络发送凭据。
 屏蔽输出用于减少意外回显，不是沙箱。诊断日志、报告、对话和命令预览中不得输出凭据。
 
