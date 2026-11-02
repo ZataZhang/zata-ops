@@ -20,6 +20,7 @@ from rich.table import Table
 from zata_ops.config import OpsSettings, load_settings
 from zata_ops.db import _backup_impl, _restore_impl
 from zata_ops.db._migrate_cli import _register_migrate_command
+from zata_ops.db._role_cli import register_role_commands
 from zata_ops.db._s3 import S3Client, build_backup_plan
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -392,3 +393,4 @@ def _redact_db_url(db_url: str) -> str:
 
 
 _register_migrate_command(app)
+register_role_commands(app)

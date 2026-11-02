@@ -9,8 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import psycopg
+import pymysql
 import typer
 from rich.console import Console
+
+from zata_ops.db._mysql_migration import (
+    MySQLMigrationOptions,
+    run_mysql_postgres_migration,
+)
+from zata_ops.db._service_connections import resolve_database_service
+from zata_ops.private_credentials import validate_private_directory
 
 console = Console()
 
@@ -38,17 +47,48 @@ def _register_migrate_command(database_app: typer.Typer) -> None:
 
     @database_app.command("migrate")
     def migrate_command(
-        source_db_url: str = typer.Option(
-            ...,
+        source_db_url: Optional[str] = typer.Option(
+            None,
             "--source",
             envvar="ZATA_OPS_MIGRATE_SOURCE_URL",
-            help="Source PostgreSQL URL; can also use ZATA_OPS_MIGRATE_SOURCE_URL.",
+            help="Source PostgreSQL URL for PostgreSQL-to-PostgreSQL migration.",
         ),
-        target_db_url: str = typer.Option(
-            ...,
+        target_db_url: Optional[str] = typer.Option(
+            None,
             "--target",
             envvar="ZATA_OPS_MIGRATE_TARGET_URL",
-            help="Target PostgreSQL URL; can also use ZATA_OPS_MIGRATE_TARGET_URL.",
+            help="Target PostgreSQL URL for PostgreSQL-to-PostgreSQL migration.",
+        ),
+        source_engine: str = typer.Option(
+            "postgresql",
+            "--source-engine",
+            help="Source engine: postgresql or mysql.",
+        ),
+        source_service: Optional[str] = typer.Option(
+            None, "--source-service", help="Registered MySQL source service name."
+        ),
+        target_service: Optional[str] = typer.Option(
+            None, "--target-service", help="Registered PostgreSQL target service name."
+        ),
+        replace_target: bool = typer.Option(
+            False,
+            "--replace-target",
+            help="Back up, stage and replace a PostgreSQL service target; keep rollback DB.",
+        ),
+        private_dir: Path = typer.Option(
+            Path("config/private"), "--private-dir", help="Private config directory."
+        ),
+        backup_dir: Optional[str] = typer.Option(
+            None, "--backup-dir", help="Private directory for target backups."
+        ),
+        pgloader_binary: str = typer.Option(
+            "pgloader", "--pgloader", help="pgloader executable for MySQL imports."
+        ),
+        timeout_seconds: int = typer.Option(
+            3600,
+            "--timeout-seconds",
+            min=1,
+            help="Maximum MySQL import duration in seconds; default is one hour.",
         ),
         work_dir: Optional[str] = typer.Option(None, help="Local scratch directory."),
         dry_run: bool = typer.Option(
@@ -57,25 +97,34 @@ def _register_migrate_command(database_app: typer.Typer) -> None:
         verify_row_counts: bool = typer.Option(
             False,
             "--verify-row-counts",
-            help="Compare exact row counts after restore; use only while source writes are stopped.",
+            help="Compare PostgreSQL snapshot row counts; MySQL migrations always do this.",
         ),
         keep_dump: bool = typer.Option(
             False,
             "--keep-dump",
-            help="Keep the local SQL dump instead of deleting it after the command.",
+            help="Keep the PostgreSQL snapshot dump instead of deleting it after the command.",
         ),
     ) -> None:
-        """Migrate PostgreSQL data from one database to another.
+        """Migrate a PostgreSQL snapshot or stage a MySQL-to-PostgreSQL import.
 
-        This is NOT an Alembic schema migration. It runs ``pg_dump`` on the
-        source URL, then pipes the dump into ``psql`` on the target URL. The
-        target database must be new or empty.
+        PostgreSQL snapshots use ``pg_dump`` and ``psql`` and require an empty
+        target. MySQL imports use registered service records and ``pgloader``;
+        they run in a staged PostgreSQL database and require ``--replace-target``
+        before replacing a non-empty target. Neither mode is an Alembic migration.
 
         Args:
             source_db_url: Source PostgreSQL URL, or its configured environment
-                variable value.
+                variable value for PostgreSQL snapshots.
             target_db_url: Target PostgreSQL URL, or its configured environment
-                variable value.
+                variable value for PostgreSQL snapshots.
+            source_engine: Source database engine.
+            source_service: Registered MySQL service for cross-engine migrations.
+            target_service: Registered PostgreSQL service for cross-engine migrations.
+            replace_target: Back up and swap a non-empty target after verification.
+            private_dir: Private config path used for service metadata and secrets.
+            backup_dir: Optional private target-backup directory.
+            pgloader_binary: Executable used by the MySQL migration path.
+            timeout_seconds: Maximum duration for the MySQL import stage.
             work_dir: Optional directory for the temporary SQL dump.
             dry_run: Print the redacted plan without connecting to either database.
             verify_row_counts: Compare exact persistent-table row counts after restore.
@@ -89,6 +138,58 @@ def _register_migrate_command(database_app: typer.Typer) -> None:
         """
         from zata_ops.db.cli import _resolve, _settings_or_die
 
+        if source_engine == "mysql":
+            if keep_dump or work_dir:
+                raise typer.BadParameter(
+                    "--keep-dump and --work-dir are only used by PostgreSQL snapshots."
+                )
+            if source_db_url or target_db_url:
+                raise typer.BadParameter(
+                    "Use --source-service and --target-service for MySQL migration; "
+                    "database URLs are not accepted in this mode."
+                )
+            if not source_service or not target_service:
+                raise typer.BadParameter(
+                    "MySQL migration requires --source-service and --target-service."
+                )
+            if dry_run:
+                _print_mysql_migration_dry_run(
+                    source_service=source_service,
+                    target_service=target_service,
+                    replace_target=replace_target,
+                    pgloader_binary=pgloader_binary,
+                    timeout_seconds=timeout_seconds,
+                    backup_dir=backup_dir,
+                )
+                return
+            _run_mysql_migration(
+                source_service=source_service,
+                target_service=target_service,
+                replace_target=replace_target,
+                private_dir=private_dir,
+                backup_dir=backup_dir,
+                pgloader_binary=pgloader_binary,
+                timeout_seconds=timeout_seconds,
+            )
+            return
+        if source_engine != "postgresql":
+            raise typer.BadParameter("--source-engine must be postgresql or mysql.")
+        if source_service or target_service:
+            raise typer.BadParameter(
+                "--source-service and --target-service are only used with MySQL sources."
+            )
+        if backup_dir or pgloader_binary != "pgloader" or timeout_seconds != 3600:
+            raise typer.BadParameter(
+                "--backup-dir, --pgloader and --timeout-seconds are only used with MySQL sources."
+            )
+        if replace_target:
+            raise typer.BadParameter(
+                "--replace-target is currently supported for the staged MySQL-to-PostgreSQL path."
+            )
+        if not source_db_url or not target_db_url:
+            raise typer.BadParameter(
+                "PostgreSQL migration requires --source and --target, or their environment variables."
+            )
         project_settings = _settings_or_die()
         migration_options = _PostgresMigrationOptions(
             source_db_url=source_db_url,
@@ -103,6 +204,114 @@ def _register_migrate_command(database_app: typer.Typer) -> None:
             return
 
         _run_postgres_migration(migration_options)
+
+
+def _print_mysql_migration_dry_run(
+    *,
+    source_service: str,
+    target_service: str,
+    replace_target: bool,
+    pgloader_binary: str,
+    timeout_seconds: int,
+    backup_dir: str | None,
+) -> None:
+    """Print the registered-service migration plan without connecting."""
+    console.print("[bold green]zata-ops db migrate --dry-run[/bold green]")
+    console.print_json(
+        json.dumps(
+            {
+                "source_engine": "mysql",
+                "source_service": source_service,
+                "target_engine": "postgresql",
+                "target_service": target_service,
+                "replace_target": replace_target,
+                "target_backup_directory": backup_dir
+                or "config/private/backups/db-migration",
+                "pgloader": pgloader_binary,
+                "timeout_seconds": timeout_seconds,
+                "verification": [
+                    "exact per-table row counts",
+                    "primary/foreign/CHECK constraint counts",
+                    "target backup archive readability",
+                ],
+                "note": "Dry run reads no credentials and makes no database connection.",
+            }
+        )
+    )
+
+
+def _run_mysql_migration(
+    *,
+    source_service: str,
+    target_service: str,
+    replace_target: bool,
+    private_dir: Path,
+    backup_dir: str | None,
+    pgloader_binary: str,
+    timeout_seconds: int,
+) -> None:
+    """Resolve injected service credentials and run the staged migration."""
+    try:
+        validate_private_directory(private_dir)
+        source_connection = resolve_database_service(
+            private_dir=private_dir,
+            service_name=source_service,
+            expected_engine="mysql",
+        )
+        target_connection = resolve_database_service(
+            private_dir=private_dir,
+            service_name=target_service,
+            expected_engine="postgresql",
+        )
+        backup_directory = (
+            Path(backup_dir) if backup_dir else private_dir / "backups" / "db-migration"
+        )
+        private_root = private_dir.resolve()
+        private_backup_root = private_root / "backups"
+        if private_backup_root.is_symlink():
+            raise ValueError("Private backup root must not be a symlink.")
+        resolved_backup_directory = backup_directory.resolve()
+        if not resolved_backup_directory.is_relative_to(private_backup_root):
+            raise ValueError(
+                "Backup directory must remain inside config/private/backups."
+            )
+        migration_result = run_mysql_postgres_migration(
+            MySQLMigrationOptions(
+                source_connection=source_connection,
+                target_connection=target_connection,
+                backup_directory=resolved_backup_directory,
+                replace_target=replace_target,
+                pgloader_binary=pgloader_binary,
+                timeout_seconds=timeout_seconds,
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as migration_error:
+        console.print(
+            f"[red]MySQL migration stopped: {migration_error}[/red]", stderr=True
+        )
+        raise typer.Exit(code=1) from migration_error
+    except (psycopg.Error, pymysql.MySQLError) as database_error:
+        console.print(
+            "[red]MySQL migration stopped because a database operation failed; "
+            "connection details were hidden.[/red]",
+            stderr=True,
+        )
+        raise typer.Exit(code=1) from database_error
+
+    console.print(
+        f"[green]Migration complete: {migration_result.table_count} tables, "
+        f"{migration_result.row_count} rows, "
+        f"{migration_result.foreign_key_count} foreign keys, "
+        f"{migration_result.check_constraint_count} CHECK constraints, "
+        f"{migration_result.index_count} indexes, "
+        f"{migration_result.sequence_count} sequences.[/green]"
+    )
+    if migration_result.target_backup_path is not None:
+        console.print(f"Target backup: {migration_result.target_backup_path}")
+    if migration_result.rollback_database_name is not None:
+        console.print(
+            f"Rollback database retained: {migration_result.rollback_database_name}"
+        )
 
 
 def _print_migration_dry_run(migration_options: _PostgresMigrationOptions) -> None:
