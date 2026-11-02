@@ -1,1 +1,1 @@
-"""Database operations: backup, restore, list, migrate, check."""
+"""Database backup, restore, migration and PostgreSQL role operations."""

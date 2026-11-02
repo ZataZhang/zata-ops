@@ -6,172 +6,29 @@ import argparse
 import getpass
 import hashlib
 import json
-import os
 import sys
-import tempfile
-import tomllib
 from pathlib import Path
-from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import ValidationError
 from private_secrets import (
-    SECRET_NAME,
     credential_status,
     read_hidden_secret,
     run_with_credentials,
-    store_secret,
     validate_private_directory,
 )
 
-from zata_ops.inventory import InventoryRecord, load_inventory
-
-
-class ServiceConfig(InventoryRecord):
-    """Public connection metadata with a reference to a separate credential."""
-
-    name: Annotated[str, Field(min_length=1)]
-    server: str
-    type: Literal["postgresql", "mysql", "redis", "http", "other"]
-    host: str
-    port: Annotated[int, Field(ge=1, le=65535)] | Literal[""]
-    database: str
-    username: str
-    url: str = ""
-    password_env: str
-    notes: str
-
-    @field_validator("url")
-    @classmethod
-    def validate_public_url(cls, value: str) -> str:
-        """Reject URL fields that could contain credentials.
-
-        Args:
-            value: Public service URL, or an empty string.
-
-        Returns:
-            Validated URL.
-
-        Raises:
-            ValueError: URL has credentials, query parameters or a fragment.
-        """
-        if value:
-            parsed = urlsplit(value)
-            if (
-                not parsed.scheme
-                or not parsed.hostname
-                or parsed.username is not None
-                or parsed.password is not None
-                or parsed.query
-                or parsed.fragment
-            ):
-                raise ValueError("URL must have no credentials, query or fragment")
-            parsed.port
-        return value
-
-    @field_validator("password_env")
-    @classmethod
-    def validate_reference(cls, value: str) -> str:
-        """Check that a credential reference is an environment variable name.
-
-        Args:
-            value: Reference to the private credential store.
-
-        Returns:
-            Validated reference.
-
-        Raises:
-            ValueError: Reference is invalid.
-        """
-        if not SECRET_NAME.fullmatch(value):
-            raise ValueError("invalid credential reference")
-        return value
-
-
-class ServicesConfig(InventoryRecord):
-    """Versioned service list with unique names and credential references."""
-
-    schema_version: Literal[1] = 1
-    services: list[ServiceConfig] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_unique_services(self) -> ServicesConfig:
-        """Require unique service names and references.
-
-        Returns:
-            Validated service list.
-
-        Raises:
-            ValueError: Names or credential references are duplicated.
-        """
-        for values in (
-            [service.name for service in self.services],
-            [service.password_env for service in self.services],
-        ):
-            if len(values) != len(set(values)):
-                raise ValueError("duplicate services or credential references")
-        return self
-
-
-def load_services(service_path: Path) -> ServicesConfig:
-    """Load and validate service metadata without exposing invalid inputs.
-
-    Args:
-        service_path: Private service TOML file.
-
-    Returns:
-        Validated inventory; empty inventory when no file exists.
-
-    Raises:
-        ValueError: TOML or fields are invalid, or the file is a symlink.
-        OSError: File cannot be read.
-    """
-    if service_path.is_symlink():
-        raise ValueError("symlink service file")
-    if not service_path.exists():
-        return ServicesConfig()
-    service_path.chmod(0o600)
-    return parse_services_config(service_path.read_text(encoding="utf-8"))
-
-
-def parse_services_config(service_text: str) -> ServicesConfig:
-    """Parse and validate service metadata without changing file permissions.
-
-    Args:
-        service_text: TOML text from the private service inventory.
-
-    Returns:
-        Validated service inventory.
-
-    Raises:
-        ValueError: TOML or service fields are invalid.
-    """
-    return ServicesConfig.model_validate_json(json.dumps(tomllib.loads(service_text)))
-
-
-def summarize_services(
-    service_entries: list[ServiceConfig],
-    credential_status_by_name: dict[str, bool],
-) -> list[dict[str, object]]:
-    """Summarize service metadata and credential availability.
-
-    Args:
-        service_entries: Selected validated service records.
-        credential_status_by_name: Credential-name status map without values.
-
-    Returns:
-        Service dictionaries with a boolean ``password_configured`` field.
-    """
-    return [
-        {
-            **service_entry.model_dump(),
-            "password_configured": credential_status_by_name.get(
-                service_entry.password_env, False
-            ),
-        }
-        for service_entry in service_entries
-    ]
+from zata_ops.inventory import load_inventory
+from zata_ops.services import (
+    ServiceConfig,
+    ServicesConfig,
+    load_services,
+    parse_services_config as parse_services_config,
+    summarize_services,
+    write_services_config,
+)
+from zata_ops.private_credentials import store_secret
 
 
 def add_service(private_dir: Path, inventory: ServicesConfig) -> None:
@@ -265,24 +122,8 @@ def add_service(private_dir: Path, inventory: ServicesConfig) -> None:
         print("已取消，未保存。")
         return
     updated_inventory = ServicesConfig(services=[*inventory.services, service])
-    lines = ["schema_version = 1", ""]
-    for saved_service in updated_inventory.services:
-        lines.append("[[services]]")
-        lines.extend(
-            f"{key} = {json.dumps(value, ensure_ascii=False)}"
-            for key, value in saved_service.model_dump().items()
-        )
-        lines.append("")
-    descriptor, temporary_name = tempfile.mkstemp(prefix=".services-", dir=private_dir)
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as metadata_file:
-            metadata_file.write("\n".join(lines))
-        # This also backs up existing service metadata before either file changes.
-        store_secret(private_dir / "secrets.env", reference, password)
-        temporary_path.replace(private_dir / "services.toml")
-    finally:
-        temporary_path.unlink(missing_ok=True)
+    store_secret(private_dir / "secrets.env", reference, password)
+    write_services_config(private_dir / "services.toml", updated_inventory)
     print("服务已保存，密码已关联且未显示。运行 just service-list 查看。")
 
 

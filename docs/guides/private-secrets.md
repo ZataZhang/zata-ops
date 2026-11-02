@@ -2,7 +2,7 @@
 
 服务位置和用途保存在 `config/private/services.toml`；密码、Token 和带凭据的连接串存放在
 `config/private/secrets.env`。日常使用服务登记向导，自动保存二者的关联。
-`config/services.example.toml` 是虚构示例；服务脚本会读取并校验此结构，其他运维命令尚未自动读取服务清单。
+`config/services.example.toml` 是虚构示例；服务脚本和数据库迁移、角色管理命令会读取并校验此结构。
 `config/secrets.env.example` 提供虚构凭据格式，并与服务示例中的 `password_env` 对应；
 无需复制，登记向导会自动生成私有凭据文件。
 
@@ -136,6 +136,7 @@ uv run python scripts/diagnostics/private_secrets.py run \
 
 ## 备份
 
-现有 `just private-backup` 会包含 `secrets.env`，历史备份可能保留旧密码。
+现有 `just private-backup` 会包含 `secrets.env`，历史备份可能保留旧密码；数据库迁移归档放在
+`config/private/backups/` 下，不会被私有配置归档重复打包。
 压缩包**未加密**，手动复制时也要按凭据文件保管，放到自己信任的加密存储位置。
 备份、提醒与恢复方式见[私有运维配置](private-inventory.md)。

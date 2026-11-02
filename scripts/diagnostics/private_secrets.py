@@ -5,46 +5,23 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
-import re
 import subprocess
 import sys
-import tempfile
 import warnings
 from pathlib import Path
 
-from dotenv import dotenv_values, set_key
-from private_config_backup import create_backup
+from dotenv import dotenv_values
 
+from zata_ops.private_credentials import (
+    SECRET_NAME,
+    credential_status,
+    store_secret,
+    validate_private_directory,
+)
 
-SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
 REDACTION_MARKER = "***"
 # 过短的凭据做字面替换会误伤普通输出，也无法可信地屏蔽，因此拒绝放开输出。
 MIN_REDACTABLE_LENGTH = 8
-
-
-def credential_status(secret_path: Path) -> dict[str, bool]:
-    """Return configured status by credential name without exposing values.
-
-    Args:
-        secret_path: Private dotenv file.
-
-    Returns:
-        Mapping from valid credential names to whether each value is non-empty.
-
-    Raises:
-        ValueError: The credential file is a symbolic link.
-        OSError: The credential file cannot be read.
-    """
-    if secret_path.is_symlink():
-        raise ValueError("symlink credential file")
-    if not secret_path.exists():
-        return {}
-    stored_credentials = dotenv_values(secret_path, interpolate=False, encoding="utf-8")
-    return {
-        credential_name: bool(credential_value)
-        for credential_name, credential_value in stored_credentials.items()
-        if SECRET_NAME.fullmatch(credential_name)
-    }
 
 
 def read_hidden_secret(prompt: str) -> str:
@@ -65,85 +42,6 @@ def read_hidden_secret(prompt: str) -> str:
     with warnings.catch_warnings():
         warnings.simplefilter("error", getpass.GetPassWarning)
         return getpass.getpass(prompt)
-
-
-def validate_private_directory(private_dir: Path) -> None:
-    """Require an ignored, untracked location within this checkout.
-
-    Args:
-        private_dir: Credential directory, resolved relative to the current directory.
-
-    Returns:
-        None.
-
-    Raises:
-        ValueError: Path is tracked, outside the checkout, or a symbolic link.
-        OSError: Git is unavailable or the directory cannot be created.
-    """
-    repo_root = Path(__file__).resolve().parents[2]
-    absolute_dir = private_dir.absolute()
-    if any(parent.is_symlink() for parent in (absolute_dir, *absolute_dir.parents)):
-        raise ValueError("symlink path")
-    relative_dir = absolute_dir.relative_to(repo_root)
-    ignored = subprocess.run(
-        ["git", "check-ignore", "--quiet", "--", str(relative_dir / "secrets.env")],
-        cwd=repo_root,
-        capture_output=True,
-    )
-    tracked = subprocess.run(
-        ["git", "ls-files", "--", str(relative_dir)],
-        cwd=repo_root,
-        capture_output=True,
-    )
-    if ignored.returncode != 0 or tracked.returncode != 0 or tracked.stdout:
-        raise ValueError("private directory must be ignored and untracked")
-    private_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    private_dir.chmod(0o700)
-    secret_path = private_dir / "secrets.env"
-    if secret_path.is_symlink():
-        raise ValueError("symlink credential file")
-    if secret_path.exists():
-        secret_path.chmod(0o600)
-
-
-def store_secret(secret_path: Path, name: str, value: str) -> None:
-    """Back up existing configuration and atomically update a credential.
-
-    Args:
-        secret_path: Local dotenv file.
-        name: Validated environment variable name.
-        value: Single-line credential to store.
-
-    Returns:
-        None.
-
-    Raises:
-        OSError: Backup or atomic write fails.
-        ValueError: Value is empty or contains unsupported characters.
-    """
-    if not value or any(character in value for character in "\r\n\x00"):
-        raise ValueError("invalid credential value")
-    private_dir = secret_path.parent
-    existing_files = [
-        config_path
-        for config_path in private_dir.iterdir()
-        if config_path.name not in {"backups", ".copy-reminder"}
-    ]
-    if existing_files:
-        create_backup(private_dir)
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=".secret-", dir=private_dir
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(file_descriptor, "w", encoding="utf-8") as credential_file:
-            if secret_path.exists():
-                credential_file.write(secret_path.read_text(encoding="utf-8"))
-        set_key(temporary_path, name, value, quote_mode="always", encoding="utf-8")
-        temporary_path.chmod(0o600)
-        temporary_path.replace(secret_path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
 
 
 def redact_output(output_text: str, secret_values: list[str]) -> str:

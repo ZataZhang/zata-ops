@@ -3,72 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import os
 import tarfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from zata_ops.private_config_backup import KEEP_BACKUPS, create_backup
 
-BACKUP_PATTERN = "private-*.tar.gz"
 REMINDER_DAYS = 7
-KEEP_BACKUPS = 20
-
-
-def create_backup(private_dir: Path) -> Path:
-    """Archive private configuration, excluding backups and reminder state.
-
-    Args:
-        private_dir: Directory containing the local configuration.
-
-    Returns:
-        Path of the completed snapshot.
-
-    Raises:
-        OSError: Configuration cannot be read or the archive cannot be written.
-        ValueError: Configuration is missing or contains symbolic links.
-    """
-    if private_dir.is_symlink() or not private_dir.is_dir():
-        raise ValueError("private configuration directory is missing or is a symlink")
-    backup_dir = private_dir / "backups"
-    if backup_dir.is_symlink():
-        raise ValueError("backup directory must not be a symlink")
-    config_paths = []
-    for config_path in private_dir.rglob("*"):
-        relative_path = config_path.relative_to(private_dir)
-        if (
-            relative_path.parts[0] == "backups"
-            or relative_path.name == ".copy-reminder"
-        ):
-            continue
-        if config_path.is_symlink():
-            raise ValueError("configuration symlinks are unsupported")
-        if config_path.is_file():
-            config_paths.append(config_path)
-    if not config_paths:
-        raise ValueError("no private configuration files found")
-    backup_dir.mkdir(mode=0o700, exist_ok=True)
-    backup_dir.chmod(0o700)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    archive_path = backup_dir / f"private-{timestamp}.tar.gz"
-    partial_path = archive_path.with_suffix(".partial")
-    try:
-        with partial_path.open("xb") as archive_file:
-            os.chmod(partial_path, 0o600)
-            with tarfile.open(fileobj=archive_file, mode="w:gz") as archive:
-                for config_path in sorted(config_paths):
-                    archive.add(
-                        config_path,
-                        arcname=str(config_path.relative_to(private_dir)),
-                        recursive=False,
-                    )
-        partial_path.replace(archive_path)
-    finally:
-        partial_path.unlink(missing_ok=True)
-    for expired_backup in sorted(backup_dir.glob(BACKUP_PATTERN), reverse=True)[
-        KEEP_BACKUPS:
-    ]:
-        expired_backup.unlink()
-    return archive_path
 
 
 def remind_manual_copy(private_dir: Path, *, acknowledge: bool) -> None:
