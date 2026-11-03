@@ -4,6 +4,26 @@
 轻封装。命令默认只渲染 SSH 调用计划，不执行；只有显式去掉 `--dry-run` 时
 才真正通过本地 `ssh` 命令落到目标主机。
 
+## 为服务器添加 SSH 公钥
+
+`scripts/ssh/add-authorized-key.sh` 可将本机的 SSH 公钥添加到目标服务器用户的
+`~/.ssh/authorized_keys`：
+
+```bash
+scripts/ssh/add-authorized-key.sh example.com "$(cat ~/.ssh/id_ed25519.pub)"
+```
+
+默认以 `root` 用户和本机 `~/.ssh/id_ed25519` 私钥登录，超时为 20 秒。可通过
+`SSH_USER`、`SSH_KEY`、`SSH_PORT` 和 `SSH_TIMEOUT` 环境变量覆盖这些设置。脚本默认
+只使用公钥认证；首次配置、尚未能用密钥登录时，可显式启用交互式密码引导：
+
+```bash
+SSH_ALLOW_PASSWORD=1 scripts/ssh/add-authorized-key.sh example.com "$(cat ~/.ssh/id_ed25519.pub)"
+```
+
+密码引导默认超时为 60 秒。重复添加同一公钥会跳过，不会在 `authorized_keys` 中
+重复写入。
+
 ## Dry run
 
 ```bash
