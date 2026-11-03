@@ -38,13 +38,17 @@ docker compose --env-file local/nacos/.env -f local/nacos/compose.yaml down
 
 ## 远程部署预案
 
-目标服务器尚未指定，因此此处只准备部署边界和检查项，不包含远程连接信息或真实凭据。实际部署时再从私有清单选择服务器，并核对实时资源、网络和现存服务。
+单机远程部署文件位于 `deploy/nacos/`，包含 Compose 配置、空白环境变量模板和安装说明；不包含服务器地址或真实凭据。部署前应从私有清单选择服务器，并核对实时资源、网络和现存服务。
+
+当前部署模板固定使用 Nacos `v3.2.4`、standalone 和内置 Derby，适用于开发、测试或低风险内部使用，不提供高可用能力。Console 和 Nacos 3.x HTTP API 可通过 Traefik 以 HTTPS 公网访问；Console 仍保留本机 `127.0.0.1:18090` 的 SSH 隧道入口。原始 HTTP API `8848` 和客户端 gRPC `9848` 只绑定指定私网地址；云安全组应限制私网来源。模板暂不把 gRPC 端口开放到公网。
+
+Nacos 3.x 不兼容 Nacos 1.x 和 2.x 的 HTTP OpenAPI；接入前应确认客户端 SDK 支持 Nacos 3.x。
 
 ### 部署形态
 
 - 个人开发或临时验证可用单节点 standalone + Derby；它不具备高可用能力。
 - 承载生产服务发现或关键动态配置时，采用 Nacos 集群和外置数据库，配套数据库备份与恢复演练。
-- Nacos 应留在可信内部网络。Console 仅向管理网络开放；不要把服务端口直接暴露到公网。
+- Nacos 原始服务端口不要直接暴露到公网。Console 如需公网访问，应经 Traefik HTTPS 转发并保持 Nacos 鉴权；云安全组限制私网 API 与 gRPC 的来源。
 - 若有多个 Nacos 节点，Server 与 Console 需使用一致的 server identity 和 token secret；为管理员设置独立强密码，凭据存入私有密钥管理。
 
 ### 网络与端口
@@ -69,12 +73,14 @@ docker compose --env-file local/nacos/.env -f local/nacos/compose.yaml down
 4. 应用访问 Nacos 的内网地址、Console 管理入口、DNS/TLS 和 VPN/防火墙范围。
 5. 凭据保存位置、数据库与 Nacos 数据备份位置，以及恢复责任人。
 
-部署前会检查端口冲突、Docker/Compose 版本、磁盘、内存、网络可达性和已有服务，并锁定 Nacos 镜像版本。远程实施后验证 Console 登录、鉴权 API、客户端 gRPC、持久化和重启恢复。
+每次部署前检查端口冲突、Docker/Compose 版本、磁盘、内存、网络可达性和已有服务，并锁定 Nacos 镜像版本。远程实施后验证 Console、鉴权 API、客户端 gRPC、持久化和重启恢复。部署操作与凭据生成步骤见 `deploy/nacos/README.md`。
 
 ## 官方资料核验
 
-已于 `2026-10-29` 核对 Nacos 官方资料：
+已于 `2026-11-03` 核对 Nacos 官方资料：
 
-- [Docker 快速开始](https://www.nacos.io/en/docs/next/quickstart/quick-start-docker/)：单机 Derby 用于测试；首次 Console 登录需要初始化管理员密码。
+- [Docker 快速开始](https://www.nacos.io/en/docs/next/quickstart/quick-start-docker/)：单机 Derby 用于测试；首次 Console 登录需要初始化管理员密码，并为每个部署生成独立 token。
 - [部署最佳实践](https://www.nacos.io/docs/latest/manual/admin/deployment/deployment-best-practices/)：生产环境建议集群、外置数据库、鉴权、内部网络、监控与备份。
+- [Nacos 3.2 Client API](https://nacos.io/en/docs/v3.2/manual/user/open-api/)：Nacos 3.x HTTP API 不兼容 1.x 与 2.x API。
+- [Nacos Releases](https://github.com/alibaba/nacos/releases)：部署使用已发布的稳定版本 `3.2.4`。
 - [官方 nacos-docker 示例](https://github.com/nacos-group/nacos-docker/blob/master/example/standalone-derby.yaml)：数据卷挂载到 `/home/nacos/data`。

@@ -1,0 +1,63 @@
+name: zata-ops-nacos
+
+services:
+  nacos:
+    image: nacos/nacos-server:${NACOS_VERSION:-v3.2.4}
+    container_name: zata-ops-nacos
+    environment:
+      MODE: standalone
+      FUNCTION_MODE: microservice
+      PREFER_HOST_MODE: ip
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_SYSTEM_TYPE: nacos
+      NACOS_AUTH_ADMIN_ENABLE: "true"
+      NACOS_AUTH_CONSOLE_ENABLE: "true"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?Set NACOS_AUTH_TOKEN in .env}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:?Set NACOS_AUTH_IDENTITY_KEY in .env}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?Set NACOS_AUTH_IDENTITY_VALUE in .env}
+    ports:
+      - "${NACOS_CONSOLE_BIND_ADDRESS:-127.0.0.1}:${NACOS_CONSOLE_PORT:-18090}:8080"
+      - "${NACOS_BIND_ADDRESS:?Set NACOS_BIND_ADDRESS to a private interface IP in .env}:8848:8848"
+      - "${NACOS_BIND_ADDRESS:?Set NACOS_BIND_ADDRESS to a private interface IP in .env}:9848:9848"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.nacos-http.entrypoints: web
+      traefik.http.routers.nacos-http.rule: "Host(`${NACOS_PUBLIC_HOST:?Set NACOS_PUBLIC_HOST in .env}`)"
+      traefik.http.routers.nacos-http.middlewares: nacos-https-redirect
+      traefik.http.routers.nacos-http.service: nacos-console
+      traefik.http.routers.nacos-console.entrypoints: websecure
+      traefik.http.routers.nacos-console.rule: "Host(`${NACOS_PUBLIC_HOST:?Set NACOS_PUBLIC_HOST in .env}`)"
+      traefik.http.routers.nacos-console.priority: "10"
+      traefik.http.routers.nacos-console.tls: "true"
+      traefik.http.routers.nacos-console.tls.certresolver: letsencrypt
+      traefik.http.routers.nacos-console.service: nacos-console
+      traefik.http.services.nacos-console.loadbalancer.server.port: "8080"
+      traefik.http.routers.nacos-api.entrypoints: websecure
+      traefik.http.routers.nacos-api.rule: "Host(`${NACOS_PUBLIC_HOST:?Set NACOS_PUBLIC_HOST in .env}`) && PathPrefix(`/nacos/`)"
+      traefik.http.routers.nacos-api.priority: "100"
+      traefik.http.routers.nacos-api.tls: "true"
+      traefik.http.routers.nacos-api.tls.certresolver: letsencrypt
+      traefik.http.routers.nacos-api.service: nacos-api
+      traefik.http.services.nacos-api.loadbalancer.server.port: "8848"
+      traefik.http.middlewares.nacos-https-redirect.redirectscheme.scheme: https
+      traefik.http.middlewares.nacos-https-redirect.redirectscheme.permanent: "true"
+    networks:
+      - traefik
+    volumes:
+      - nacos-data:/home/nacos/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nacos-data:
+    name: ${NACOS_DATA_VOLUME:-zata-ops-nacos-data}
+
+networks:
+  traefik:
+    external: true
+    name: traefik
