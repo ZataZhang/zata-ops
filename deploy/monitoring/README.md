@@ -12,6 +12,10 @@ vim .env
 docker compose up -d
 ```
 
+## Dokploy 主机
+
+80/443 已由 Dokploy 占用时使用 `docker-compose.dokploy.yml`（仅日志：Vector + Loki + Grafana），变量见 `.env.dokploy.example`。在 Dokploy 中以 Git 来源（本仓库）创建 Compose 应用，Compose Path 指向该文件；不支持 Raw 来源，因为相对路径配置文件不会随单个 compose 一起下发。
+
 ## 包含组件
 
 - **Vector**：采集 Docker 容器 stdout 日志，解析 JSON，推送到 Loki。

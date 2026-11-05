@@ -6,9 +6,11 @@
 
 生产部署使用 `deploy/monitoring/docker-compose.yml`，先上传目录中非敏感配置到 `/opt/apps/monitoring`，再执行 `bash prepare-host.sh <根域名>`。服务器须已有 `/opt/traefik` 和 external `traefik` 网络，Grafana 子域名须解析到该机。准备脚本生成随机管理员密码和独立采集密码，分别保存到权限为 600 的 `.env`、`collector.env`，不会打印凭据；已有文件保留。随后校验各组件配置并执行 `docker compose up -d`。不要使用旧的 `--with-monitoring` 自动化路径，其初始化代码尚有默认密码逻辑。
 
+已由 Dokploy 管理 80/443 的主机改用 `deploy/monitoring/docker-compose.dokploy.yml`：只部署 Vector、Loki、Grafana 日志链路，复用 Dokploy 的 Traefik 与 `dokploy-network`，写入口 Basic Auth 由 `INGEST_BASIC_AUTH_USERS` 以 Docker label 定义，不写入 Dokploy 的动态配置目录。Dokploy 须使用 Git 来源并将 Compose Path 指向该文件；Raw 来源只下发单个 compose，相对路径配置会被 Docker 建成空目录，不受支持。变量见 `.env.dokploy.example`。
+
 Grafana 禁用匿名访问和自行注册；Loki、Prometheus 没有宿主机发布端口，公网只通过 Traefik 开放 `/loki/api/v1/push` 和 `/api/v1/write`，两个路径均受文件型 Basic Auth 保护，并使用 HTTPS。内部 monitoring/traefik 网络上的容器仍属于可信边界；不应让不可信容器加入这些网络。Docker socket 即使以只读挂载，也具有高权限，采集器须作为受信任服务管理。
 
-应用服务器接入时，把 `collector.compose.yml`、共用的 `vector/vector.yaml` 和受保护的 `collector.env` 上传到独立目录；将后者命名为 `.env`，运行 `docker compose -p observability -f collector.compose.yml up -d`，不重启业务容器。新主机使用唯一 `NODE_NAME` 和独立写入凭据；当前准备脚本只初始化第一个采集身份，新增身份应保留原 users 文件并追加密码哈希，不能重新生成并覆盖已有用户。
+应用服务器接入时，把 `collector.compose.yml`、共用的 `vector/vector.yaml`（日志）与 `vector/vector-metrics.yaml`（主机指标，只要日志时可不加载）和受保护的 `collector.env` 上传到独立目录；将后者命名为 `.env`，运行 `docker compose -p observability -f collector.compose.yml up -d`，不重启业务容器。新主机使用唯一 `NODE_NAME` 和独立写入凭据；当前准备脚本只初始化第一个采集身份，新增身份应保留原 users 文件并追加密码哈希，不能重新生成并覆盖已有用户。
 
 Vector 采集容器 stdout/stderr 和主机 CPU、内存、负载、磁盘 I/O 等指标，复用同一配置通过环境变量区分本机与 HTTPS 接收端。未启用文件系统容量采集，不应把磁盘 I/O 面板当作剩余容量；容器内的宿主机网络指标也需单独验证命名空间准确性。应用 `/metrics` 和请求级指标需另行接入。日志非 JSON 也保留原文；需在应用端避免输出敏感值。Vector 每个发送目标有约 256MiB 磁盘缓冲，但不保证历史日志全部补采。
 

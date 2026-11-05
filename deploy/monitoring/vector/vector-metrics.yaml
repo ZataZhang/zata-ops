@@ -1,0 +1,37 @@
+# -----------------------------------------------------------------------------
+# Vector 指标配置：采集主机与采集器自身指标，remote write 到 Prometheus。
+# -----------------------------------------------------------------------------
+# 与 vector.yaml 一起加载（两个 --config），只需日志时不加载本文件。
+# data_dir 由 vector.yaml 定义。
+# -----------------------------------------------------------------------------
+
+sources:
+  host_metrics:
+    type: host_metrics
+    scrape_interval_secs: 30
+    collectors: [cpu, memory, load, disk, network, host]
+  internal_metrics:
+    type: internal_metrics
+
+transforms:
+  tag_metrics:
+    type: remap
+    inputs: [host_metrics, internal_metrics]
+    source: |
+      .tags.node = "${NODE_NAME}"
+
+sinks:
+  prometheus:
+    type: prometheus_remote_write
+    inputs: [tag_metrics]
+    endpoint: ${METRICS_ENDPOINT}
+    auth:
+      strategy: basic
+      user: ${INGEST_USER}
+      password: ${INGEST_PASSWORD}
+    healthcheck:
+      enabled: false
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block

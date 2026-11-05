@@ -23,10 +23,11 @@ services:
   vector:
     <<: *runtime
     image: timberio/vector:0.58.0-debian
-    command: ["--config", "/etc/vector/vector.yaml"]
+    command: ["--config", "/etc/vector/vector.yaml", "--config", "/etc/vector/vector-metrics.yaml"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - ./vector/vector-metrics.yaml:/etc/vector/vector-metrics.yaml:ro
       - vector-data:/var/lib/vector
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro

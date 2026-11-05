@@ -1,5 +1,6 @@
 # -----------------------------------------------------------------------------
 # Vector configuration: collect Docker container logs and forward to Loki.
+# 主机指标在 vector-metrics.yaml，需要指标时以第二个 --config 一并加载。
 # -----------------------------------------------------------------------------
 # The `docker_logs` source reads stdout/stderr from all running containers via
 # the Docker API. The JSON parser extracts structured fields emitted by the
@@ -13,18 +14,16 @@ sources:
     type: docker_logs
     docker_host: unix:///var/run/docker.sock
     exclude_containers: ["monitoring-vector", "observability-vector"]
-  host_metrics:
-    type: host_metrics
-    scrape_interval_secs: 30
-    collectors: [cpu, memory, load, disk, network, host]
-  internal_metrics:
-    type: internal_metrics
 
 transforms:
   parse_app_json:
     type: remap
     inputs: ["docker_logs"]
     source: |
+      # 采集器自身日志按镜像丢弃；容器名随 Compose/Dokploy 项目名变化，不能只靠名称前缀排除。
+      if starts_with(string(.image) ?? "", "timberio/vector") {
+        abort
+      }
       # 保留 Docker 元数据，应用字段嵌套存放，避免覆盖服务标签。
       .node = "${NODE_NAME}"
       .compose_project = string(.label."com.docker.compose.project") ?? "unknown"
@@ -37,11 +36,6 @@ transforms:
         .level = "info"
       }
       .service_name = .compose_service
-  tag_metrics:
-    type: remap
-    inputs: [host_metrics, internal_metrics]
-    source: |
-      .tags.node = "${NODE_NAME}"
 
 sinks:
   loki:
@@ -64,20 +58,6 @@ sinks:
       service_name: "{{ service_name }}"
       level: "{{ level }}"
     out_of_order_action: accept
-    buffer:
-      type: disk
-      max_size: 268435488
-      when_full: block
-  prometheus:
-    type: prometheus_remote_write
-    inputs: [tag_metrics]
-    endpoint: ${METRICS_ENDPOINT}
-    auth:
-      strategy: basic
-      user: ${INGEST_USER}
-      password: ${INGEST_PASSWORD}
-    healthcheck:
-      enabled: false
     buffer:
       type: disk
       max_size: 268435488
