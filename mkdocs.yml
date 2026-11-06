@@ -44,6 +44,7 @@ nav:
       - 调度示例: guides/scheduling.md
       - VPS 初始化: guides/vps-provisioning.md
       - Nacos 开发与远程部署准备: guides/nacos.md
+      - Keycloak 统一身份中心: guides/keycloak.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md
       - 本地 E2B Embed 沙箱: guides/e2b-embed.md

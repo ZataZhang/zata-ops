@@ -1,0 +1,104 @@
+# -----------------------------------------------------------------------------
+# Keycloak（Dokploy 版）
+# -----------------------------------------------------------------------------
+# 用于已由 Dokploy 管理 80/443 的主机，复用 Dokploy 自带的 Traefik。
+# 与 compose.yaml 的差异：
+#   - 外部网络为 dokploy-network，Traefik label 显式指定该网络；
+#   - 中间件引用带 @docker 后缀，不写入 /etc/dokploy/traefik/dynamic；
+#   - 不设 container_name 与自定义卷名，交给 Dokploy 按应用命名，避免同机重名。
+#
+# Dokploy 中创建 Compose 应用：Provider 选 Git（本仓库），Compose Path 填
+# deploy/keycloak/compose.dokploy.yaml；realm/ 以相对路径挂载，依赖仓库检出目录。
+# 不支持 Raw 来源：Raw 只有单个 compose 文件，realm/ 会被 Docker 建成空目录。
+# 不要开启 Isolated Deployment，否则网络会被改写。变量见 .env.example。
+# -----------------------------------------------------------------------------
+
+x-runtime: &runtime
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  keycloak-db:
+    <<: *runtime
+    image: postgres:${KC_POSTGRES_VERSION:-17.11}
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD}
+    # 只绑回环地址，供宿主机上的 zata-ops db backup 或 SSH 隧道使用。
+    ports:
+      - "127.0.0.1:${KC_DB_LOCAL_PORT:-15432}:5432"
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    networks:
+      - keycloak-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    <<: *runtime
+    image: quay.io/keycloak/keycloak:${KC_VERSION:-26.8.2}
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD}
+      KC_HOSTNAME: https://${KC_PUBLIC_HOST:?Set KC_PUBLIC_HOST}
+      KC_HOSTNAME_ADMIN: http://127.0.0.1:${KC_ADMIN_LOCAL_PORT:-18180}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      # 单节点部署：关闭集群缓存，否则重启时会先尝试加入数据库里登记的旧节点。
+      KC_CACHE: local
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?Set KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD}
+      KC_REALM: ${KC_REALM:-zata}
+      KC_FRESHAI_DEV_CLIENT_SECRET: ${KC_FRESHAI_DEV_CLIENT_SECRET:?Set KC_FRESHAI_DEV_CLIENT_SECRET}
+      KC_FRESHAI_DEV_REDIRECT_URI: ${KC_FRESHAI_DEV_REDIRECT_URI:?Set KC_FRESHAI_DEV_REDIRECT_URI}
+    ports:
+      - "127.0.0.1:${KC_ADMIN_LOCAL_PORT:-18180}:8080"
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - keycloak-internal
+      - dokploy-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.middlewares.zauth-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.zauth-web.rule=Host(`${KC_PUBLIC_HOST}`)"
+      - "traefik.http.routers.zauth-web.entrypoints=web"
+      - "traefik.http.routers.zauth-web.middlewares=zauth-https-redirect@docker"
+      - "traefik.http.routers.zauth-web.service=zauth"
+      # 公网只放行业务 realm 与静态资源；master realm、/admin/、管理端口 9000 均不经过代理。
+      - "traefik.http.routers.zauth.rule=Host(`${KC_PUBLIC_HOST}`) && (PathPrefix(`/realms/${KC_REALM:-zata}/`) || PathPrefix(`/resources/`))"
+      - "traefik.http.routers.zauth.entrypoints=websecure"
+      - "traefik.http.routers.zauth.tls=true"
+      - "traefik.http.routers.zauth.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.zauth.service=zauth"
+      - "traefik.http.services.zauth.loadbalancer.server.port=8080"
+
+volumes:
+  keycloak-db-data:
+
+networks:
+  keycloak-internal:
+  dokploy-network:
+    external: true

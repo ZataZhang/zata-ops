@@ -1,0 +1,80 @@
+{
+  "realm": "${KC_REALM}",
+  "displayName": "Zata",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "passwordPolicy": "length(12) and notUsername and notEmail",
+  "groups": [
+    {
+      "name": "teams",
+      "subGroups": [
+        {
+          "name": "platform",
+          "clientRoles": {
+            "freshai-dev": ["user", "admin"]
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "freshai-dev",
+      "name": "freshai (dev)",
+      "description": "freshai 本地开发与 OIDC 模块联调用的测试客户端",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_FRESHAI_DEV_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${KC_FRESHAI_DEV_REDIRECT_URI}"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "basic", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"],
+      "protocolMappers": [
+        {
+          "name": "client roles in id token",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "freshai-dev",
+            "claim.name": "resource_access.freshai-dev.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "freshai-dev": [
+        { "name": "user", "description": "可登录 freshai" },
+        { "name": "admin", "description": "可进入 freshai 管理后台" }
+      ]
+    }
+  }
+}
