@@ -72,6 +72,24 @@ directory. Do not enable Isolated Deployment. Put the variables from
 
 ## First login and permanent admin
 
+The master realm is not routed publicly, but by default its URLs use the
+public `KC_HOSTNAME`, so the admin console times out with "Timeout when
+waiting for 3rd party check iframe message". Once after the first start,
+point the master realm's frontend URL at the tunnel address:
+
+```bash
+docker exec <keycloak-container> bash -c '
+K=/opt/keycloak/bin/kcadm.sh
+$K config credentials --server http://127.0.0.1:8080 --realm master \
+  --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" --config /tmp/k.cfg
+$K update realms/master -s attributes.frontendUrl=http://127.0.0.1:18180 --config /tmp/k.cfg
+rm -f /tmp/k.cfg'
+```
+
+The setting lives in the database and only affects the master realm; the
+business realm keeps the public issuer. Use the same port as
+`KC_ADMIN_LOCAL_PORT`.
+
 ```bash
 ssh -N -L 18180:127.0.0.1:18180 root@<server-public-ip>
 ```

@@ -12,7 +12,7 @@
 | 节点 | 单节点，`KC_CACHE=local` | 不需要高可用；默认集群缓存会在重启时先尝试加入数据库里登记的旧节点，拖慢启动 |
 | TLS | 在 Traefik 终止，Keycloak 内部走 HTTP 8080 | `KC_HTTP_ENABLED=true` 与 `KC_PROXY_HEADERS=xforwarded` 配合反向代理 |
 | 公网路径 | 只放行 `/realms/<realm>/` 与 `/resources/` | master realm、`/admin/`、管理端口 9000 不经过代理 |
-| 管理后台 | 绑定 `127.0.0.1:18180`，经 SSH 隧道访问 | 与 nacos 的 Console 一致；端口避开本机 nacos 开发实例占用的 18080 |
+| 管理后台 | 绑定 `127.0.0.1:18180`，经 SSH 隧道访问；首次部署后把 master realm 的 Frontend URL 设为该隧道地址（命令见 README） | 与 nacos 的 Console 一致；端口避开本机 nacos 开发实例占用的 18080 |
 | 数据库 | 独立 PostgreSQL，绑定 `127.0.0.1:15432` | 账号数据与业务库隔离；回环端口供 `zata-ops db backup` 使用 |
 
 环境变量 `KC_PUBLIC_HOST` 只填主机名，约定为 `auth.<根域名>`。SMTP 暂未配置，因此 realm 关闭了自助注册、邮箱验证与找回密码，账号由管理员创建。
@@ -79,6 +79,7 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 - 负控：未登记的回调地址返回 `Invalid parameter: redirect_uri`；不带 PKCE 的请求被拒绝（`Missing parameter: code_challenge_method`）。
 - 非默认 realm 名（`KC_REALM=dewell`）：导入文件按 realm 名挂载，导入成功，issuer 为 `https://<KC_PUBLIC_HOST>/realms/dewell`。
 - 健康检查只认 `/health/ready` 的 200：启动期间保持 starting，变为 healthy 时发现文档已可访问。
+- 管理后台经隧道打开时，master realm 默认仍用公网地址认证，而公网屏蔽了 master realm，页面报 `Timeout when waiting for 3rd party check iframe message`；把 master realm 的 `frontendUrl` 设为隧道地址后，管理后台的 `authServerUrl` 变为隧道地址，业务 realm 的 issuer 不变。
 - 恢复演练：`pg_dump` 导出后恢复到新数据卷，Keycloak 在新卷上启动，原有用户与登录流程均正常。
 - `KC_CACHE=local` 之前，重启后的容器会先尝试加入上一个容器登记的集群节点，约 20 秒后才放弃；改为单节点缓存后不再出现该等待。
 
