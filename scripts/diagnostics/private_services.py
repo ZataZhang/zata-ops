@@ -7,6 +7,7 @@ import getpass
 import hashlib
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -85,18 +86,35 @@ def add_service(private_dir: Path, inventory: ServicesConfig) -> None:
     database = input("数据库名（非数据库服务可留空）：").strip()
     username = input("用户名（无账号可留空）：").strip()
     notes = input("用途 / 备注（可留空）：").strip()
-    reference = (
-        "SERVICE_"
-        + hashlib.sha256(name.encode("utf-8")).hexdigest()[:16].upper()
-        + "_PASSWORD"
-    )
+    scope = input("权限范围 scope（如 Viewer、只读；可留空）：").strip()
+    today_text = date.today().isoformat()
+    created_at = input(f"创建日期 YYYY-MM-DD [{today_text}]：").strip() or today_text
+    expires_at = input("过期日期 YYYY-MM-DD（不过期留空）：").strip()
+    existing_reference = input(
+        "已用 just secret-set 保存的凭据名（如 GRAFANA_XXX_TOKEN；留空则稍后隐藏输入）："
+    ).strip()
     credentials = dotenv_values(
         private_dir / "secrets.env", interpolate=False, encoding="utf-8"
     )
-    if reference in credentials or any(
-        service.password_env == reference for service in inventory.services
-    ):
-        raise ValueError("generated credential reference already exists")
+    if existing_reference:
+        # 关联已有凭据：名称须已存在且未被其他服务占用，不重新输入密码。
+        reference = existing_reference
+        if reference not in credentials:
+            print("该凭据名尚未保存；请先运行 just secret-set。未修改配置。")
+            raise ValueError("unknown credential reference")
+        if any(service.password_env == reference for service in inventory.services):
+            print("该凭据已关联其他服务；未修改配置。")
+            raise ValueError("credential reference already linked")
+    else:
+        reference = (
+            "SERVICE_"
+            + hashlib.sha256(name.encode("utf-8")).hexdigest()[:16].upper()
+            + "_PASSWORD"
+        )
+        if reference in credentials or any(
+            service.password_env == reference for service in inventory.services
+        ):
+            raise ValueError("generated credential reference already exists")
     service = ServiceConfig(
         name=name,
         server=server_name,
@@ -108,23 +126,52 @@ def add_service(private_dir: Path, inventory: ServicesConfig) -> None:
         url=public_url,
         password_env=reference,
         notes=notes,
+        scope=scope,
+        created_at=created_at,
+        expires_at=expires_at,
     )
     if not service.host:
         print("需要填写主机地址或服务 URL；未修改配置。")
         raise ValueError("missing host")
-    print("接下来输入该服务现有的密码或 Token，不会创建或更改远端账号。")
-    password = read_hidden_secret("密码 / Token（隐藏输入，输入后回车）：")
-    confirmation = read_hidden_secret("再次输入密码 / Token：")
-    if password != confirmation:
-        print("两次输入不一致；未保存。")
-        raise ValueError("password mismatch")
-    if input("保存此服务及密码？[y/N]：").strip().lower() != "y":
+    password = ""
+    if not existing_reference:
+        print("接下来输入该服务现有的密码或 Token，不会创建或更改远端账号。")
+        password = read_hidden_secret("密码 / Token（隐藏输入，输入后回车）：")
+        confirmation = read_hidden_secret("再次输入密码 / Token：")
+        if password != confirmation:
+            print("两次输入不一致；未保存。")
+            raise ValueError("password mismatch")
+    if input("保存此服务及凭据关联？[y/N]：").strip().lower() != "y":
         print("已取消，未保存。")
         return
     updated_inventory = ServicesConfig(services=[*inventory.services, service])
-    store_secret(private_dir / "secrets.env", reference, password)
+    if not existing_reference:
+        store_secret(private_dir / "secrets.env", reference, password)
     write_services_config(private_dir / "services.toml", updated_inventory)
-    print("服务已保存，密码已关联且未显示。运行 just service-list 查看。")
+    print("服务已保存，凭据已关联且未显示。运行 just service-list 查看。")
+
+
+def warn_expiring_credentials(service_summaries: list[dict[str, object]]) -> None:
+    """Print expiry warnings to stderr so JSON on stdout stays parseable.
+
+    Args:
+        service_summaries: Output of ``summarize_services``.
+
+    Returns:
+        None.
+    """
+    for summary in service_summaries:
+        if summary["expiry_status"] == "expired":
+            print(
+                f"⚠ {summary['name']} 的凭据已于 {summary['expires_at']} 过期，需要轮换。",
+                file=sys.stderr,
+            )
+        elif summary["expiry_status"] == "expiring":
+            print(
+                f"⚠ {summary['name']} 的凭据将在 {summary['days_until_expiry']} 天后"
+                f"（{summary['expires_at']}）过期。",
+                file=sys.stderr,
+            )
 
 
 def main() -> int:
@@ -182,6 +229,7 @@ def main() -> int:
             print("尚未登记服务。运行 just service-add 添加。")
         else:
             print(json.dumps(summaries, ensure_ascii=False, indent=2))
+            warn_expiring_credentials(summaries)
         return 0
     except (OSError, ValueError, ValidationError, getpass.GetPassWarning):
         print(
