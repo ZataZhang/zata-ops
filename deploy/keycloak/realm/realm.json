@@ -1,6 +1,6 @@
 {
   "realm": "${KC_REALM}",
-  "displayName": "Zata",
+  "displayName": "${KC_REALM_DISPLAY_NAME}",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

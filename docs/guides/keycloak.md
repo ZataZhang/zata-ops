@@ -19,7 +19,7 @@
 
 ## realm 结构
 
-`realm/realm.json` 定义业务 realm，名称取自 `KC_REALM`（默认 `zata`）。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。
+`realm/realm.json` 定义业务 realm，名称取自 `KC_REALM`（默认 `zata`）。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。登录页标题取自 `KC_REALM_DISPLAY_NAME`，不填时与 realm 名相同；和 realm 文件的其他内容一样，只在首次导入时生效。
 
 - 团队用组表示，放在 `/teams` 下，例如 `/teams/platform`。
 - 启用暴力破解防护，密码至少 12 位。
