@@ -19,7 +19,7 @@
 
 ## realm 结构
 
-`realm/realm.json` 定义业务 realm，名称取自 `KC_REALM`（默认 `zata`）。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。登录页标题取自 `KC_REALM_DISPLAY_NAME`，不填时与 realm 名相同；和 realm 文件的其他内容一样，只在首次导入时生效。
+`realm/realm.json` 定义业务 realm，名称取自必填变量 `KC_REALM`，没有默认值。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。登录页标题取自 `KC_REALM_DISPLAY_NAME`，不填时与 realm 名相同；和 realm 文件的其他内容一样，只在首次导入时生效。
 
 - 团队用组表示，放在 `/teams` 下，例如 `/teams/platform`。
 - 启用暴力破解防护，密码至少 12 位。
@@ -31,7 +31,7 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 
 1. 在 realm 文件中为应用的每个环境新增一个 Client（模板见下），审查后用 `kcadm.sh` 应用到线上。
 2. 把该应用的客户端角色授给需要访问它的团队组（组的 `clientRoles`），用户随组获得角色。
-3. 应用侧配置 issuer（`https://<KC_PUBLIC_HOST>/realms/zata`）、Client ID 与 Client Secret；Client Secret 只放在部署环境。
+3. 应用侧配置 issuer（`https://<KC_PUBLIC_HOST>/realms/<KC_REALM>`）、Client ID 与 Client Secret；Client Secret 只放在部署环境。
 4. 应用用 `(iss, sub)` 映射本地用户，不用邮箱当主键；没有 `user` 角色的用户拒绝登录。
 
 ### Client 模板
@@ -74,7 +74,7 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 本机按 `compose.yaml` 启动（Docker 网段已耗尽，测试时两个容器改挂已有网络，不改 Keycloak 配置）：
 
 - realm 首次启动导入成功，重启后跳过导入，测试用户保留。
-- 发现文档、JWKS 可访问；生产 hostname 配置下 issuer 为 `https://<KC_PUBLIC_HOST>/realms/zata`。
+- 发现文档、JWKS 可访问；生产 hostname 配置下 issuer 为 `https://<KC_PUBLIC_HOST>/realms/<KC_REALM>`。
 - 用按上面模板配置的临时测试客户端，经真实登录页跑通授权码 + PKCE：`/teams/platform` 成员的 ID Token 带 `admin`、`user` 角色，无组用户不带角色。该测试客户端已从 realm 文件移除。
 - 负控：未登记的回调地址返回 `Invalid parameter: redirect_uri`；不带 PKCE 的请求被拒绝（`Missing parameter: code_challenge_method`）。
 - 非默认 realm 名（`KC_REALM=dewell`）：导入文件按 realm 名挂载，导入成功，issuer 为 `https://<KC_PUBLIC_HOST>/realms/dewell`。

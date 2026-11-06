@@ -99,7 +99,7 @@ For a change to a running realm (new client, new team group, new role):
    docker exec -it <keycloak-container> /opt/keycloak/bin/kcadm.sh config credentials \
      --server http://127.0.0.1:8080 --realm master --user <admin>
    docker exec -it <keycloak-container> /opt/keycloak/bin/kcadm.sh create groups/<teams-group-id>/children \
-     -r zata -s name=team-a
+     -r <realm> -s name=team-a
    ```
 
 The realm file ships no application client. Register one client per

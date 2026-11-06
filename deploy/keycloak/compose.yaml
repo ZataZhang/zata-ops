@@ -54,14 +54,14 @@ services:
       KC_CACHE: local
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?Set KC_BOOTSTRAP_ADMIN_USERNAME in .env}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD in .env}
-      KC_REALM: ${KC_REALM:-zata}
+      KC_REALM: ${KC_REALM:?Set KC_REALM in .env}
       # 登录页标题，不填时与 realm 名相同。
-      KC_REALM_DISPLAY_NAME: ${KC_REALM_DISPLAY_NAME:-${KC_REALM:-zata}}
+      KC_REALM_DISPLAY_NAME: ${KC_REALM_DISPLAY_NAME:-${KC_REALM}}
     ports:
       - "127.0.0.1:${KC_ADMIN_LOCAL_PORT:-18180}:8080"
     volumes:
       # Keycloak 要求导入文件名为 <realm>-realm.json，因此按 KC_REALM 命名挂载目标。
-      - ./realm/realm.json:/opt/keycloak/data/import/${KC_REALM:-zata}-realm.json:ro
+      - ./realm/realm.json:/opt/keycloak/data/import/${KC_REALM:?Set KC_REALM in .env}-realm.json:ro
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -85,7 +85,7 @@ services:
       traefik.http.routers.zauth-http.service: zauth
       # 公网只放行业务 realm 与静态资源；master realm、/admin/、管理端口 9000 均不经过代理。
       traefik.http.routers.zauth.entrypoints: websecure
-      traefik.http.routers.zauth.rule: "Host(`${KC_PUBLIC_HOST}`) && (PathPrefix(`/realms/${KC_REALM:-zata}/`) || PathPrefix(`/resources/`))"
+      traefik.http.routers.zauth.rule: "Host(`${KC_PUBLIC_HOST}`) && (PathPrefix(`/realms/${KC_REALM:?Set KC_REALM in .env}/`) || PathPrefix(`/resources/`))"
       traefik.http.routers.zauth.tls: "true"
       traefik.http.routers.zauth.tls.certresolver: letsencrypt
       traefik.http.routers.zauth.service: zauth
