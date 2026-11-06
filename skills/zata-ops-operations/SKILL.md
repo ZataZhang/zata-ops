@@ -15,10 +15,10 @@ description: 使用 zata-ops 处理 SSH 隧道、数据库备份/恢复/跨机�
 | PostgreSQL 跨机迁移 | [数据库迁移](references/database-migration.md)、`src/zata_ops/db/cli.py` | 区分复制快照与应用切换，核对目标库和持续写入。 |
 | S3 备份、恢复和检查 | `docs/guides/backup-and-restore.md`、`src/zata_ops/db/cli.py` | `db check` 检查 S3，**不是**数据库连通性测试；恢复参数可能替换目标数据。 |
 | VPS 初始化和 ACME 修复 | `docs/guides/vps-provisioning.md`、`src/zata_ops/env/cli.py` | 先看 `--dry-run` 的远端计划，再按用户授权执行。 |
-| 容器或 systemd 日志 | `src/zata_ops/logs/cli.py` | `logs tail/search` 可先用 `--dry-run` 确认命令；输出可能含业务敏感信息。 |
+| 容器或 systemd 日志 | `src/zata_ops/logs/cli.py` | `logs tail/search` 可先用 `--dry-run` 确认命令；输出可能含业务敏感信息。已接入 Loki 的服务器优先用 `log-query` skill 经 HTTPS 只读查询，不需要 SSH。 |
 | 终端状态面板 | `src/zata_ops/observability/cli.py` | 当前 `dashboard` 使用模拟数据，不能当作真实健康检查。 |
 
-GitHub Actions runner 主机安装和工作流调度适配用 `github-self-hosted-runner` skill；应用发布流程用 `github-vps-deploy` skill；应用日志和指标接入用 `container-observability-onboard` skill。不要把这些专项流程复制到本 skill。
+GitHub Actions runner 主机安装和工作流调度适配用 `github-self-hosted-runner` skill；应用发布流程用 `github-vps-deploy` skill；应用日志和指标接入用 `container-observability-onboard` skill；已接入日志的集中查询用 `log-query` skill。不要把这些专项流程复制到本 skill。
 
 ## SSH 隧道
 
