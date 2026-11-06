@@ -14,7 +14,7 @@ applications already issued keep working.
 | `compose.yaml` | Plain VPS with an existing Traefik on the external `traefik` network. |
 | `compose.dokploy.yaml` | Host whose 80/443 is managed by Dokploy (`dokploy-network`). |
 | `.env.example` | Variables shared by both compose files. No real values. |
-| `realm/zata-realm.json` | Business realm, team groups, client roles, test client. |
+| `realm/zata-realm.json` | Business realm, login policy, team groups. No application clients. |
 
 The design notes and the per-application onboarding steps live in
 `docs/guides/keycloak.md`.
@@ -37,7 +37,6 @@ The design notes and the per-application onboarding steps live in
 | --- | --- |
 | `KC_DB_PASSWORD` | Password of the `keycloak` database user. |
 | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | Temporary master realm admin. Create a permanent admin, then delete this user. |
-| `KC_FRESHAI_DEV_CLIENT_SECRET` | Client secret of the `freshai-dev` test client. |
 
 Generate each value independently and keep it in the protected remote `.env`
 (or the Dokploy Environment panel) and a private credential store. Never add
@@ -46,7 +45,6 @@ the values to this repository.
 ```bash
 openssl rand -hex 24   # KC_DB_PASSWORD
 openssl rand -hex 24   # KC_BOOTSTRAP_ADMIN_PASSWORD
-openssl rand -hex 32   # KC_FRESHAI_DEV_CLIENT_SECRET
 ```
 
 ## Install on a plain VPS
@@ -102,9 +100,11 @@ For a change to a running realm (new client, new team group, new role):
      -r zata -s name=team-a
    ```
 
-The `freshai-dev` client only accepts `KC_FRESHAI_DEV_REDIRECT_URI` and is for
-local OIDC module development. Register a separate client for every
-application and environment.
+The realm file ships no application client. Register one client per
+application and environment when that application integrates, with its real
+callback URL; `docs/guides/keycloak.md` has the client template. Develop an
+application's OIDC login against a local Keycloak started from this same
+compose file, not against the production realm.
 
 ## Backup and restore
 

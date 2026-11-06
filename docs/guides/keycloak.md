@@ -22,19 +22,52 @@
 `realm/zata-realm.json` 定义业务 realm `zata`：
 
 - 团队用组表示，放在 `/teams` 下，例如 `/teams/platform`。
-- 应用内能做什么用客户端角色表示，例如 `freshai-dev` 的 `user` 与 `admin`；角色授给团队组，用户随组获得角色。
-- 每个应用的客户端带一个角色映射器，把本应用的角色写进 ID Token 的 `resource_access.<client>.roles`，应用登录回调直接读取。Keycloak 默认只把客户端角色写进 Access Token。
-- 客户端强制 PKCE（S256），关闭隐式流程与密码直连授权。
 - 启用暴力破解防护，密码至少 12 位。
+- 不预置任何应用客户端。客户端在应用真正接入时按真实回调地址登记；开发应用的 OIDC 登录时，用同一份 compose 在本机起 Keycloak 自测，不往生产 realm 放开发用客户端。
 
 realm 文件只在 realm 不存在时导入，之后的改动先改文件并审查，再用 `kcadm.sh` 应用到线上，步骤见 README。
 
 ## 新应用接入
 
-1. 在 realm 文件中为应用的每个环境新增一个 Client：精确的回调地址、强制 PKCE、`user`/`admin` 客户端角色和 ID Token 角色映射器；审查后用 `kcadm.sh` 应用到线上。
-2. 把角色授给需要访问该应用的团队组。
+1. 在 realm 文件中为应用的每个环境新增一个 Client（模板见下），审查后用 `kcadm.sh` 应用到线上。
+2. 把该应用的客户端角色授给需要访问它的团队组（组的 `clientRoles`），用户随组获得角色。
 3. 应用侧配置 issuer（`https://<KC_PUBLIC_HOST>/realms/zata`）、Client ID 与 Client Secret；Client Secret 只放在部署环境。
 4. 应用用 `(iss, sub)` 映射本地用户，不用邮箱当主键；没有 `user` 角色的用户拒绝登录。
+
+### Client 模板
+
+应用内能做什么用客户端角色表示（`user`、`admin`）。Keycloak 默认只把客户端角色写进 Access Token，模板里的映射器把本应用的角色写进 ID Token 的 `resource_access.<client>.roles`，应用登录回调直接读取。客户端强制 PKCE（S256），关闭隐式流程与密码直连授权。`<app>` 与回调地址按应用替换；`secret` 留空由 Keycloak 生成，再从管理后台复制到应用的部署环境。
+
+```json
+{
+  "clientId": "<app>",
+  "protocol": "openid-connect",
+  "publicClient": false,
+  "standardFlowEnabled": true,
+  "implicitFlowEnabled": false,
+  "directAccessGrantsEnabled": false,
+  "redirectUris": ["https://<app 域名>/auth/oidc/callback"],
+  "webOrigins": ["+"],
+  "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "+" },
+  "protocolMappers": [{
+    "name": "client roles in id token",
+    "protocol": "openid-connect",
+    "protocolMapper": "oidc-usermodel-client-role-mapper",
+    "config": {
+      "usermodel.clientRoleMapping.clientId": "<app>",
+      "claim.name": "resource_access.<app>.roles",
+      "jsonType.label": "String",
+      "multivalued": "true",
+      "id.token.claim": "true",
+      "access.token.claim": "false",
+      "userinfo.token.claim": "true",
+      "introspection.token.claim": "true"
+    }
+  }]
+}
+```
+
+客户端角色写在 realm 文件的 `roles.client.<app>` 下，例如 `[{"name": "user"}, {"name": "admin"}]`。
 
 ## 验证记录
 
@@ -42,7 +75,7 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 
 - realm 首次启动导入成功，重启后跳过导入，测试用户保留。
 - 发现文档、JWKS 可访问；生产 hostname 配置下 issuer 为 `https://<KC_PUBLIC_HOST>/realms/zata`。
-- 经真实登录页跑通授权码 + PKCE：`/teams/platform` 成员的 ID Token 带 `admin`、`user` 角色，无组用户不带角色。
+- 用按上面模板配置的临时测试客户端，经真实登录页跑通授权码 + PKCE：`/teams/platform` 成员的 ID Token 带 `admin`、`user` 角色，无组用户不带角色。该测试客户端已从 realm 文件移除。
 - 负控：未登记的回调地址返回 `Invalid parameter: redirect_uri`；不带 PKCE 的请求被拒绝（`Missing parameter: code_challenge_method`）。
 - 恢复演练：`pg_dump` 导出后恢复到新数据卷，Keycloak 在新卷上启动，原有用户与登录流程均正常。
 - `KC_CACHE=local` 之前，重启后的容器会先尝试加入上一个容器登记的集群节点，约 20 秒后才放弃；改为单节点缓存后，重建容器约 11 秒就绪。
