@@ -22,9 +22,22 @@ just service-add
 URL 可辅助填写主机和端口，拒绝含账号密码、查询参数或片段的 URL。
 PostgreSQL、MySQL 和 Redis 预填常用端口。URL 不替代主机、数据库和用户名字段。
 
-随后隐藏输入两次该服务**已有的密码或 Token**，确认后保存。不会创建或修改远端数据库账号，
-也不会测试服务连接。凭据名称自动生成，不需要用户记住；名称重复时拒绝覆盖。
+接着填写可选的凭据生命周期信息：权限范围 `scope`（如 `Viewer`、只读）、创建日期
+`created_at`（默认当天）和过期日期 `expires_at`（不过期留空），日期格式均为 `YYYY-MM-DD`。
+API Token 建议都填上，数据库密码通常只保留默认创建日期。
+
+最后选择凭据来源：
+
+- **新输入**：凭据名留空，随后隐藏输入两次该服务**已有的密码或 Token**。凭据名称自动生成，
+  不需要用户记住；名称重复时拒绝覆盖。
+- **关联已保存的凭据**：填写先用 `just secret-set` 保存的名称（例如按下游读取的环境变量名
+  保存的 `GRAFANA_XXX_TOKEN`），不再重复输入。名称不存在或已关联其他服务时拒绝保存。
+
+确认后保存。不会创建或修改远端账号，也不会测试服务连接。
 无密码服务暂不支持此向导，可继续手动管理其元数据。
+
+同一服务的多个 Token（例如分别给不同 Agent 使用、便于单独吊销）各登记为一条服务记录，
+`username` 填对方系统中的账号名（如 Grafana service account），`notes` 写用途和轮换方法。
 
 ```bash
 just service-list
@@ -32,7 +45,9 @@ just service-show main-postgres
 just private-config-show
 ```
 
-显示地址、端口、用户名、用途及 `password_configured` 状态，不显示密码。
+显示地址、端口、用户名、用途、生命周期字段及 `password_configured` 状态，不显示密码。
+另附 `expiry_status`（`none` / `ok` / `expiring` / `expired`）与 `days_until_expiry`；
+30 天内到期或已过期的凭据会在 stderr 打印提醒，stdout 的 JSON 保持可解析。
 空清单会提示添加服务；非法配置的错误不会回显原始值。
 `private-config-show` 会跨服务器清单、服务清单和 OpenSandbox 配置生成统一摘要，凭据只显示名称与配置状态。
 

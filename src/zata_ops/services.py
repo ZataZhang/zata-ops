@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 import tomllib
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -16,6 +17,8 @@ from pydantic import Field, field_validator, model_validator
 from zata_ops.inventory import InventoryRecord
 
 SECRET_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+EXPIRY_WARNING_DAYS = 30
 
 
 class ServiceConfig(InventoryRecord):
@@ -31,6 +34,30 @@ class ServiceConfig(InventoryRecord):
     url: str = ""
     password_env: str
     notes: str
+    # 以下为可选的凭据生命周期元数据，主要服务 API Token；数据库密码通常留空。
+    scope: str = ""
+    created_at: str = ""
+    expires_at: str = ""
+
+    @field_validator("created_at", "expires_at")
+    @classmethod
+    def validate_iso_date(cls, value: str) -> str:
+        """Require lifecycle dates to be empty or ``YYYY-MM-DD``.
+
+        Args:
+            value: Date text stored in the service record.
+
+        Returns:
+            The validated date text.
+
+        Raises:
+            ValueError: If the text is not an ISO calendar date.
+        """
+        if value:
+            if not ISO_DATE.fullmatch(value):
+                raise ValueError("date must be YYYY-MM-DD")
+            date.fromisoformat(value)
+        return value
 
     @field_validator("password_env")
     @classmethod
@@ -187,25 +214,60 @@ def write_services_config(service_path: Path, services_config: ServicesConfig) -
         temporary_path.unlink(missing_ok=True)
 
 
+def credential_expiry(
+    service_entry: ServiceConfig, today: date
+) -> tuple[str, int | None]:
+    """Classify a credential's expiry relative to a given day.
+
+    Args:
+        service_entry: Validated service record.
+        today: Reference day, injected for deterministic tests.
+
+    Returns:
+        ``(status, days_left)`` where status is ``none``, ``ok``, ``expiring``
+        (within ``EXPIRY_WARNING_DAYS``) or ``expired``; days_left is None
+        when no expiry is recorded.
+    """
+    if not service_entry.expires_at:
+        return "none", None
+    days_left = (date.fromisoformat(service_entry.expires_at) - today).days
+    if days_left < 0:
+        return "expired", days_left
+    if days_left <= EXPIRY_WARNING_DAYS:
+        return "expiring", days_left
+    return "ok", days_left
+
+
 def summarize_services(
     service_entries: list[ServiceConfig],
     credential_status_by_name: dict[str, bool],
+    today: date | None = None,
 ) -> list[dict[str, object]]:
     """Summarize service metadata and credential availability without values.
 
     Args:
         service_entries: Selected validated service records.
         credential_status_by_name: Credential-name status map without values.
+        today: Reference day for expiry classification; defaults to today.
 
     Returns:
-        Service dictionaries with a boolean ``password_configured`` field.
+        Service dictionaries with ``password_configured``, ``expiry_status``
+        and ``days_until_expiry`` fields.
     """
-    return [
-        {
-            **service_entry.model_dump(),
-            "password_configured": credential_status_by_name.get(
-                service_entry.password_env, False
-            ),
-        }
-        for service_entry in service_entries
-    ]
+    reference_day = today or date.today()
+    service_summaries: list[dict[str, object]] = []
+    for service_entry in service_entries:
+        expiry_status, days_until_expiry = credential_expiry(
+            service_entry, reference_day
+        )
+        service_summaries.append(
+            {
+                **service_entry.model_dump(),
+                "password_configured": credential_status_by_name.get(
+                    service_entry.password_env, False
+                ),
+                "expiry_status": expiry_status,
+                "days_until_expiry": days_until_expiry,
+            }
+        )
+    return service_summaries
