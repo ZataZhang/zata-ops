@@ -19,7 +19,7 @@
 
 ## realm 结构
 
-`realm/zata-realm.json` 定义业务 realm `zata`：
+`realm/realm.json` 定义业务 realm，名称取自 `KC_REALM`（默认 `zata`）。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。
 
 - 团队用组表示，放在 `/teams` 下，例如 `/teams/platform`。
 - 启用暴力破解防护，密码至少 12 位。
@@ -77,7 +77,9 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 - 发现文档、JWKS 可访问；生产 hostname 配置下 issuer 为 `https://<KC_PUBLIC_HOST>/realms/zata`。
 - 用按上面模板配置的临时测试客户端，经真实登录页跑通授权码 + PKCE：`/teams/platform` 成员的 ID Token 带 `admin`、`user` 角色，无组用户不带角色。该测试客户端已从 realm 文件移除。
 - 负控：未登记的回调地址返回 `Invalid parameter: redirect_uri`；不带 PKCE 的请求被拒绝（`Missing parameter: code_challenge_method`）。
+- 非默认 realm 名（`KC_REALM=dewell`）：导入文件按 realm 名挂载，导入成功，issuer 为 `https://<KC_PUBLIC_HOST>/realms/dewell`。
+- 健康检查只认 `/health/ready` 的 200：启动期间保持 starting，变为 healthy 时发现文档已可访问。
 - 恢复演练：`pg_dump` 导出后恢复到新数据卷，Keycloak 在新卷上启动，原有用户与登录流程均正常。
-- `KC_CACHE=local` 之前，重启后的容器会先尝试加入上一个容器登记的集群节点，约 20 秒后才放弃；改为单节点缓存后，重建容器约 11 秒就绪。
+- `KC_CACHE=local` 之前，重启后的容器会先尝试加入上一个容器登记的集群节点，约 20 秒后才放弃；改为单节点缓存后不再出现该等待。
 
 未在本机验证：Traefik 路径过滤、Let's Encrypt 证书与 Dokploy 部署，需在目标服务器上线时确认。

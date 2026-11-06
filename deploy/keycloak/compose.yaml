@@ -37,7 +37,7 @@ services:
     <<: *runtime
     image: quay.io/keycloak/keycloak:${KC_VERSION:-26.8.2}
     container_name: zata-ops-keycloak
-    # realm 已存在时导入会被跳过，因此 realm/ 只用于首次创建和从零重建。
+    # realm 已存在时导入会被跳过，因此 realm/realm.json 只用于首次创建和从零重建。
     command: ["start", "--import-realm"]
     environment:
       KC_DB: postgres
@@ -58,7 +58,8 @@ services:
     ports:
       - "127.0.0.1:${KC_ADMIN_LOCAL_PORT:-18180}:8080"
     volumes:
-      - ./realm:/opt/keycloak/data/import:ro
+      # Keycloak 要求导入文件名为 <realm>-realm.json，因此按 KC_REALM 命名挂载目标。
+      - ./realm/realm.json:/opt/keycloak/data/import/${KC_REALM:-zata}-realm.json:ro
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -66,8 +67,9 @@ services:
       - keycloak-internal
       - traefik
     healthcheck:
-      # 镜像不带 curl，用 bash 的 /dev/tcp 访问管理端口 9000 的就绪检查。
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      # 镜像不带 curl，用 bash 的 /dev/tcp 访问管理端口 9000 的就绪检查；只认 200，
+      # 未就绪时返回 503，响应体里子检查项也会出现 "UP"，不能按内容判断。
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
       interval: 15s
       timeout: 5s
       retries: 20

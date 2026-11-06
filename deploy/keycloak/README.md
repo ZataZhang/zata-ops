@@ -14,7 +14,7 @@ applications already issued keep working.
 | `compose.yaml` | Plain VPS with an existing Traefik on the external `traefik` network. |
 | `compose.dokploy.yaml` | Host whose 80/443 is managed by Dokploy (`dokploy-network`). |
 | `.env.example` | Variables shared by both compose files. No real values. |
-| `realm/zata-realm.json` | Business realm, login policy, team groups. No application clients. |
+| `realm/realm.json` | Business realm (name from `KC_REALM`), login policy, team groups. No application clients. |
 
 The design notes and the per-application onboarding steps live in
 `docs/guides/keycloak.md`.
@@ -82,14 +82,16 @@ that user, and delete the bootstrap admin.
 
 ## Realm configuration
 
-`--import-realm` imports `realm/*.json` only when the realm does not exist yet:
+Keycloak requires an import file to be named `<realm>-realm.json`, so the
+compose files mount `realm/realm.json` as `${KC_REALM}-realm.json`.
+`--import-realm` imports it only when the realm does not exist yet:
 on later starts the log shows that the import was skipped. The file is
 therefore the source for creating the realm from scratch, not a sync tool.
 `${...}` placeholders in the file resolve from the container environment.
 
 For a change to a running realm (new client, new team group, new role):
 
-1. Change `realm/zata-realm.json` and review it in a pull request.
+1. Change `realm/realm.json` and review it in a pull request.
 2. Apply the same change to the running realm with `kcadm.sh` inside the
    container, for example:
 
