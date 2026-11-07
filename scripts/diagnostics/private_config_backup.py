@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import argparse
 import tarfile
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from zata_ops.private_config_archive import (
+    RestoreRollbackError,
+    RestoreResult,
+    restore_backup,
+)
 from zata_ops.private_config_backup import KEEP_BACKUPS, create_backup
 
 REMINDER_DAYS = 7
@@ -57,26 +63,96 @@ def remind_manual_copy(private_dir: Path, *, acknowledge: bool) -> None:
 
 
 def main() -> int:
-    """Run an explicit backup, reminder check, or manual-copy acknowledgement.
+    """Run a backup, restore preview, restore, or manual-copy reminder action.
 
     Returns:
         Zero on success; one on file or configuration errors.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["backup", "remind", "acknowledge"])
-    parser.add_argument("--private-dir", type=Path, default=Path("config/private"))
-    arguments = parser.parse_args()
+    action_parsers = parser.add_subparsers(dest="action", required=True)
+
+    backup_parser = action_parsers.add_parser("backup")
+    backup_parser.add_argument(
+        "--private-dir", type=Path, default=Path("config/private")
+    )
+
+    restore_parser = action_parsers.add_parser("restore")
+    restore_parser.add_argument("archive", type=Path)
+    restore_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="replace active private files after creating a recovery backup",
+    )
+    restore_parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="add files that do not exist and preserve existing destination paths",
+    )
+
+    for reminder_action in ("remind", "acknowledge"):
+        reminder_parser = action_parsers.add_parser(reminder_action)
+        reminder_parser.add_argument(
+            "--private-dir", type=Path, default=Path("config/private")
+        )
+
+    parsed_arguments = parser.parse_args()
     try:
-        if arguments.action == "backup":
-            archive_path = create_backup(arguments.private_dir)
+        if parsed_arguments.action == "backup":
+            archive_path = create_backup(parsed_arguments.private_dir)
             print(f"本机备份已保存：{archive_path}（保留最近 {KEEP_BACKUPS} 份）")
+        elif parsed_arguments.action == "restore":
+            restore_result: RestoreResult = restore_backup(
+                parsed_arguments.archive,
+                Path("config/private"),
+                apply_restore=parsed_arguments.apply,
+                merge_existing=parsed_arguments.merge,
+            )
+            print(
+                f"归档有效：{len(restore_result.member_paths)} 个文件，"
+                f"解压后 {restore_result.total_size_bytes} 字节。"
+            )
+            skipped_member_path_set = set(restore_result.skipped_member_paths)
+            for member_path in restore_result.member_paths:
+                if member_path in skipped_member_path_set:
+                    action_label = "保留现有"
+                elif restore_result.merge_existing:
+                    action_label = "导入"
+                else:
+                    action_label = "恢复"
+                print(f"  {action_label}: {member_path}")
+            if parsed_arguments.apply and restore_result.applied:
+                operation_label = "导入" if restore_result.merge_existing else "恢复"
+                print(
+                    f"私有配置已{operation_label}；恢复前备份："
+                    f"{restore_result.recovery_backup_path or '无现有配置文件'}。"
+                )
+                print(
+                    "backups/ 与 .copy-reminder 已保留，文件权限设为 600、目录权限设为 700。"
+                )
+            elif parsed_arguments.apply:
+                print("没有导入文件：归档中的路径已存在，未修改配置或创建备份。")
+            else:
+                print("仅完成预览，没有修改私有配置。应用操作请增加 --apply。")
         else:
             remind_manual_copy(
-                arguments.private_dir, acknowledge=arguments.action == "acknowledge"
+                parsed_arguments.private_dir,
+                acknowledge=parsed_arguments.action == "acknowledge",
             )
-    except (OSError, ValueError, tarfile.TarError) as backup_error:
+    except RestoreRollbackError as restore_error:
         print(
-            f"操作失败（{type(backup_error).__name__}）；请检查私有目录、权限和提醒状态。"
+            "恢复失败且自动回滚未完成；暂存文件保留在 "
+            f"{restore_error.staging_directory}。"
+        )
+        return 1
+    except (
+        OSError,
+        ValueError,
+        EOFError,
+        zlib.error,
+        tarfile.TarError,
+    ) as backup_error:
+        print(
+            f"操作失败（{type(backup_error).__name__}）；请检查归档、私有目录和权限。"
         )
         return 1
     return 0

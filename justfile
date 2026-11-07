@@ -22,6 +22,10 @@ inventory-format path="config/private/servers.toml" *args:
 private-backup:
     uv run python scripts/diagnostics/private_config_backup.py backup
 
+# Preview an archive; pass --apply to apply, or --merge to preserve existing paths.
+private-restore archive *args:
+    uv run python scripts/diagnostics/private_config_backup.py restore {{quote(archive)}} {{args}}
+
 # Check whether the user should manually copy private configuration elsewhere.
 private-backup-reminder:
     uv run python scripts/diagnostics/private_config_backup.py remind

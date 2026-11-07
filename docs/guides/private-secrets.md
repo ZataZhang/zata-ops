@@ -62,7 +62,7 @@ uv run python scripts/diagnostics/private_services.py run --password-env PGPASSW
 
 保存前自动备份已有私有配置，单个文件采用原子替换，面向单用户串行操作。
 两个文件不具备跨文件事务：若保存中途发生磁盘故障，密码可能已存入但服务未登记；
-请根据备份核对恢复，脚本不会输出密码。
+可用 `just private-restore` 预览并恢复备份，脚本不会输出密码。
 
 ## 底层凭据工具
 

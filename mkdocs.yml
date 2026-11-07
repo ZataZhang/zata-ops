@@ -37,7 +37,7 @@ nav:
   - 首页: index.md
   - 快速开始: getting-started.md
   - 使用指南:
-      - 私有配置总览与清单格式: guides/private-inventory.md
+      - 私有配置、清单与备份导入恢复: guides/private-inventory.md
       - 服务与凭据管理: guides/private-secrets.md
       - 应用现场检查: guides/application-inspection.md
       - 备份、恢复与迁移: guides/backup-and-restore.md

@@ -25,6 +25,8 @@
 `just inventory-format config/private/servers.toml --write`，再运行 `just inventory-check`。
 格式化会替换注释；长期信息保存到 `notes` 或私有快照，不把平铺追加当作完成维护。
 Agent 修改现有私有配置前必须运行 `just private-backup`，成功后再修改。
+恢复或导入私有备份都使用 `just private-restore <归档路径>` 预览；默认应用模式会替换活动配置，
+添加 `--merge` 会只导入缺失路径并保留已有文件；确认后显式添加 `--apply` 才会执行变更。
 出现手动复制提醒时告知用户；只有用户确认已完成复制后，才能运行 `just private-copy-done`，
 不能以生成本机备份代替用户的手动复制确认。
 凭据操作使用[服务与凭据管理](../guides/private-secrets.md)中的脚本：让用户本机隐藏输入，

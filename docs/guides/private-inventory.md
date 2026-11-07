@@ -34,7 +34,43 @@ just private-backup
 命令把 `config/private/` 内的文件复制为 `config/private/backups/private-<UTC时间>.tar.gz`，
 不包含 `backups/` 和提醒状态文件，保留最近 20 份。备份目录权限为 `700`、文件为 `600`，
 均由 Git 忽略；压缩包未加密。没有私有配置时命令失败，不会创建空备份。
-本机副本用于恢复误改，手动检查压缩包并把所需文件解压到临时目录，校验后再替换正式配置。
+本机副本用于恢复误改，可通过下节的 `just private-restore` 预览并恢复。
+
+### 恢复私有配置
+
+先预览备份内容；默认只校验归档并列出相对路径，不修改文件：
+
+```bash
+just private-restore config/private/backups/private-<UTC时间>.tar.gz
+```
+
+确认归档包含预期的私有配置文件后，显式应用恢复：
+
+```bash
+just private-restore config/private/backups/private-<UTC时间>.tar.gz --apply
+```
+
+恢复会用归档内容替换 `config/private/` 中的现有配置文件，不合并文件；`backups/` 与
+`.copy-reminder` 会保留。应用前会自动备份当前私有配置；首次恢复或当前目录没有配置文件时，
+不会生成空备份。归档中的文件按相对路径写入 `config/private/`，所以只选择内容原本就属于
+该目录的备份。恢复拒绝绝对路径、路径穿越、重复或冲突路径、符号链接和非普通文件；总解压
+大小上限为 512 MiB。恢复使用临时目录，文件权限设为 `600`、目录权限设为 `700`。
+命令校验归档完整性与路径安全，不验证各配置文件的业务结构；恢复后运行相应的离线校验命令。
+
+### 导入私有文件归档
+
+导入外部打包的私有文件时，用 `private-restore --merge`。它按归档相对路径把新文件放入
+`config/private/`；已存在的目标文件会保留并在预览中标记，不覆盖，也不合并 TOML 内容：
+
+```bash
+just private-restore /path/to/private-bundle.tar.gz --merge
+just private-restore /path/to/private-bundle.tar.gz --merge --apply
+```
+
+默认只预览；应用时会先备份当前私有配置。若归档内所有路径都已存在，则不会改文件，也不会
+生成备份。归档同样限制为普通文件、拒绝路径穿越和符号链接，解压后总大小上限为 512 MiB。
+预览会标出将导入和保留现有的路径。只导入确认属于 `config/private/` 的归档成员；归档中
+其他目录名也会按原样成为该目录下的子目录。
 
 ```bash
 just private-backup-reminder

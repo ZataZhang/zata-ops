@@ -65,5 +65,5 @@ Agent 使用密码时按服务名称注入可信子进程，具体命令见下�
 - 真实配置通过自己信任的安全渠道交接，新机器需调整 SSH 私钥路径。
 - URL 中含密码或 Token 时属于凭据；服务元数据只保存不带凭据的地址。
 
-详细字段和恢复说明见[私有运维配置](../docs/guides/private-inventory.md)，
+详细字段、归档导入和恢复说明见[私有运维配置](../docs/guides/private-inventory.md)，
 服务登记与凭据使用见[服务与凭据管理](../docs/guides/private-secrets.md)。
