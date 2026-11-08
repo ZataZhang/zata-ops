@@ -11,6 +11,8 @@ wheels/
 
 # Logs
 logs/
+!/src/zata_ops/logs/
+!/src/zata_ops/logs/**
 # Local operational inventory and private configuration
 /config/private/
 *.log

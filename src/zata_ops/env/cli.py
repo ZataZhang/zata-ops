@@ -26,7 +26,16 @@ def provision_command(
         "traefik", help="Traefik external Docker network."
     ),
     acme_email: Optional[str] = typer.Option(
-        None, help="Real email for Let's Encrypt (skip to use HTTP only)."
+        None,
+        help=(
+            "ACME account email. Omit to use the built-in placeholder, which "
+            "still issues certificates; use --no-acme to disable TLS."
+        ),
+    ),
+    no_acme: bool = typer.Option(
+        False,
+        "--no-acme",
+        help="Skip ACME entirely: no certificatesResolvers, HTTP services only.",
     ),
     with_monitoring: bool = typer.Option(
         False,
@@ -52,12 +61,18 @@ def provision_command(
         console.print(f"[red]Unknown profile: {profile}[/red]")
         raise typer.Exit(code=2)
 
+    if no_acme and acme_email:
+        console.print("[red]--no-acme 与 --acme-email 不能同时使用[/red]")
+        raise typer.Exit(code=2)
+
+    effective_acme_email = "" if no_acme else acme_email
+
     provision_plan = _runner.build_provision_plan(
         host=host,
         user=user,
         ssh_key=ssh_key,
         profile=profile,
-        acme_email=acme_email,
+        acme_email=effective_acme_email,
         traefik_network=traefik_network,
         with_monitoring=with_monitoring,
         monitoring_domain=monitoring_domain,

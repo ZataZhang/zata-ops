@@ -142,10 +142,13 @@ zata-ops env fix --host example.com --email ops@example.com
 ### 日志 `logs`
 
 ```bash
-# 跟踪容器或 systemd 日志
+# 跟踪 Docker 项目的 backend 容器
 zata-ops logs tail --project my-app --since 1h --dry-run
 
-# 在最近日志里搜索关键字
+# 跟踪 systemd 单元
+zata-ops logs tail --unit my-app.service --since 1h
+
+# 在最近 24 小时的日志里搜索字面文本
 zata-ops logs search "ERROR" --project my-app --dry-run
 ```
 

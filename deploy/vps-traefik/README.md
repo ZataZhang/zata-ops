@@ -57,11 +57,31 @@
 在 VPS 上以 root 或具备 sudo 权限的用户执行：
 
 ```bash
+# 默认占位邮箱，拿到域名并解析到本机后即可自动签发
+bash deploy/vps-traefik/install-docker-traefik.sh
+
+# 换成自己的邮箱
 ACME_EMAIL=you@your-domain.com bash deploy/vps-traefik/install-docker-traefik.sh
+
+# 完全不启用 ACME，只提供 HTTP
+ACME_EMAIL= bash deploy/vps-traefik/install-docker-traefik.sh
 ```
 
-安装脚本是幂等的。它默认创建名为 `traefik` 的外部 Docker 网络，
-并在提供了真实 `ACME_EMAIL` 时以 `letsencrypt` resolver 启动 Traefik。
+安装脚本是幂等的。它默认创建名为 `traefik` 的外部 Docker 网络，并总是写入
+`letsencrypt` resolver：`ACME_EMAIL` 未设置时使用内置占位邮箱
+`example@zata-ops.com`。这个地址只填充 ACME 账户的联系人字段，Let's Encrypt 不校验它，
+也不影响证书签发（官方自 2025 年起已停止发送到期提醒邮件）。只有显式传
+`ACME_EMAIL=` 才会跳过 `certificatesResolvers`，退化为纯 HTTP。
+
+注意：`ACME_EMAIL` 非空时脚本会把 HTTP 全局跳转到 HTTPS。用 IP 直接访问、暂时没有
+域名的场景，如果不想被跳到自签证书，显式加 `ENABLE_HTTPS_REDIRECT=false`。
+
+安装时还会配置持久化的 `DOCKER-USER` 规则：外部接口只允许访问 Docker 发布的 TCP 80/443，
+其他发布端口会被丢弃；容器访问 `169.254.169.254` 会被丢弃，宿主机上的非 root 进程访问该
+元数据地址会被拒绝。规则由 `zata-docker-user-firewall.service` 在 Docker 启动后应用；
+回滚时先运行 `sudo systemctl disable --now zata-docker-user-firewall.service`，再运行
+`sudo /usr/local/sbin/zata-docker-user-firewall --remove`，最后删除 unit 和脚本并执行
+`sudo systemctl daemon-reload`。
 
 如果服务器上已有 Traefik，但浏览器显示的是 Traefik 默认证书，
 说明 ACME 邮箱是占位符，在服务器上执行修复：

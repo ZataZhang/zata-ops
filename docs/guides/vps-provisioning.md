@@ -42,6 +42,20 @@ zata-ops env provision \
 - 要执行的 `ssh` argv（含 `bash -s` here-doc 包裹的脚本内容）。
 - `bootstrap.sh` 仍建议在工作站本地执行，命令计划中只会展示其长度。
 
+## ACME 邮箱
+
+`--acme-email` 省略时，模板使用内置占位邮箱 `example@zata-ops.com` 写入 `letsencrypt`
+resolver。该地址只填充 ACME 账户联系人字段，Let's Encrypt 不校验、也不影响签发。
+需要完全关闭 ACME（只提供 HTTP）时加 `--no-acme`：它显式传入空的 `ACME_EMAIL`，
+模板因此不写 `certificatesResolvers`。
+
+注意 `ACME_EMAIL` 非空时模板默认开启 HTTP→HTTPS 全局跳转。纯 IP、无域名访问时若想保留
+HTTP，在服务器上重跑时显式设置 `ENABLE_HTTPS_REDIRECT=false`。
+
+模板还会安装 `zata-docker-user-firewall.service`，在 Docker 启动后将外部到容器的发布端口
+限制为 TCP 80/443，并阻断容器及宿主机非 root 进程访问 `169.254.169.254`。宿主机 root 仍可
+读取云元数据，供系统管理代理使用。移除此项前先确认没有依赖其他 Docker 发布端口的服务。
+
 ## 真正执行
 
 去掉 `--dry-run` 后，命令会按顺序执行计划中的 `argv`：
@@ -52,6 +66,8 @@ zata-ops env provision --host example.com --user deploy --ssh-key ~/.ssh/cd-my-a
 ```
 
 执行前请确保本机已配置好 `~/.ssh/known_hosts` 与 SSH key 权限。
+执行器会展开 `--ssh-key` 中的 `~`，并强制使用非交互式公钥认证和严格主机密钥校验；
+未知主机密钥会导致命令失败，需先通过可信渠道核验并加入 `known_hosts`。
 
 ## ACME 邮箱修复
 

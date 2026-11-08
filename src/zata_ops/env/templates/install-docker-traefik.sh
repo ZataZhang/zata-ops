@@ -4,12 +4,15 @@ set -Eeuo pipefail
 # Ubuntu/Debian server installer for Docker Engine + Traefik.
 #
 # Usage:
-#   bash install-docker-traefik.sh
-#   ACME_EMAIL=you@your-domain.com bash install-docker-traefik.sh
+#   bash install-docker-traefik.sh                                  # default placeholder email
+#   ACME_EMAIL=you@your-domain.com bash install-docker-traefik.sh   # real mailbox
+#   ACME_EMAIL= bash install-docker-traefik.sh                      # no ACME, HTTP only
 #
-# If you do NOT pass ACME_EMAIL, the script installs Traefik with HTTP only
-# and skips the Let's Encrypt resolver. You can re-run with a real email
-# later to enable HTTPS certificate issuance.
+# ACME_EMAIL falls back to example@zata-ops.com when the variable is unset.
+# That address only fills the ACME account contact field: Let's Encrypt does
+# not verify it and stopped sending expiration reminders in 2025, so it does
+# not affect issuance. Set ACME_EMAIL to an empty string to skip the
+# certificatesResolvers block entirely (HTTP only).
 #
 # Optional environment variables:
 #   TRAEFIK_DIR=/opt/traefik
@@ -23,19 +26,20 @@ set -Eeuo pipefail
 TRAEFIK_DIR="${TRAEFIK_DIR:-/opt/traefik}"
 TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
 TRAEFIK_IMAGE="${TRAEFIK_IMAGE:-traefik:v3.7}"
-# Default is empty on purpose. When empty, the script does NOT write a
-# certificatesResolvers block to traefik.yml — Traefik will only serve the
-# built-in fallback self-signed cert, which is fine for local dev.
+# Note the "-" (not ":-"): unset falls back to the default placeholder, while
+# an explicit empty value (ACME_EMAIL=) still disables ACME. When ACME is
+# disabled the script writes no certificatesResolvers block, so Traefik only
+# serves the built-in self-signed cert, which is fine for local dev.
 #
-# To enable Let's Encrypt you MUST pass a real mailbox:
-#   ACME_EMAIL=you@your-domain.com bash install-docker-traefik.sh
-#
-# Do NOT pass the legacy placeholder "admin@example.com" / "you@example.com":
-# Let's Encrypt silently rejects the registration, acme.json is never created,
-# and Traefik serves the TRAEFIK DEFAULT CERT to every visitor. If you've
-# already done this, fix the running install with the
-# "fix-acme-email.sh" companion script in this repo.
-ACME_EMAIL="${ACME_EMAIL:-}"
+# Do NOT pass a reserved placeholder such as "admin@example.com" /
+# "you@example.com": Let's Encrypt rejects those registrations with
+# invalidEmail ("Contact emails @example.com are forbidden"), acme.json is
+# never created, and Traefik serves the TRAEFIK DEFAULT CERT to every
+# visitor while the installer still reports success. If that already
+# happened, repair the running install with the "fix-acme-email.sh"
+# companion script in this repo.
+DEFAULT_ACME_EMAIL="example@zata-ops.com"
+ACME_EMAIL="${ACME_EMAIL-$DEFAULT_ACME_EMAIL}"
 ENABLE_HTTPS_REDIRECT="${ENABLE_HTTPS_REDIRECT:-}"
 INSTALL_SAMPLE="${INSTALL_SAMPLE:-false}"
 WHOAMI_HOST="${WHOAMI_HOST:-whoami.localhost}"
@@ -155,6 +159,105 @@ EOF
     "${SUDO[@]}" usermod -aG docker "$SUDO_USER"
     log "已把用户 ${SUDO_USER} 加入 docker 组；重新登录后可不加 sudo 使用 docker。"
   fi
+}
+
+configure_docker_firewall() {
+  log "限制 Docker 发布端口并阻止非 root 访问实例元数据。"
+  "${SUDO[@]}" tee /usr/local/sbin/zata-docker-user-firewall >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ensure_rule() {
+  local firewall_command="$1"
+  local chain_name="$2"
+  shift 2
+  if ! "$firewall_command" -w 10 -C "$chain_name" "$@" 2>/dev/null; then
+    "$firewall_command" -w 10 -A "$chain_name" "$@"
+  fi
+}
+
+remove_owned_rules() {
+  local firewall_command="$1"
+  local rule_number
+  while true; do
+    rule_number="$("$firewall_command" -w 10 -L DOCKER-USER --line-numbers -n 2>/dev/null | awk '$2 == "ZATA-DOCKER-INGRESS" {print $1; exit}')"
+    [[ -n "$rule_number" ]] || break
+    "$firewall_command" -w 10 -D DOCKER-USER "$rule_number"
+  done
+  if "$firewall_command" -w 10 -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null; then
+    "$firewall_command" -w 10 -D DOCKER-USER -d 169.254.169.254/32 -j DROP
+  fi
+  if "$firewall_command" -w 10 -S ZATA-DOCKER-INGRESS >/dev/null 2>&1; then
+    "$firewall_command" -w 10 -F ZATA-DOCKER-INGRESS
+    "$firewall_command" -w 10 -X ZATA-DOCKER-INGRESS
+  fi
+}
+
+if [[ "${1:-apply}" == "--remove" ]]; then
+  remove_owned_rules iptables
+  remove_owned_rules ip6tables
+  if iptables -w 10 -C OUTPUT -d 169.254.169.254/32 -m owner ! --uid-owner 0 -j REJECT 2>/dev/null; then
+    iptables -w 10 -D OUTPUT -d 169.254.169.254/32 -m owner ! --uid-owner 0 -j REJECT
+  fi
+  exit 0
+fi
+if [[ "${1:-apply}" != "apply" ]]; then
+  echo "Usage: zata-docker-user-firewall [apply|--remove]" >&2
+  exit 2
+fi
+
+external_interface="$(ip -o -4 route get 1.1.1.1 | awk '{for (field_index = 1; field_index <= NF; field_index++) if ($field_index == "dev") {print $(field_index + 1); exit}}')"
+[[ -n "$external_interface" ]] || { echo "Cannot determine external interface." >&2; exit 1; }
+
+for firewall_command in iptables ip6tables; do
+  "$firewall_command" -w 10 -S DOCKER-USER >/dev/null
+  if ! "$firewall_command" -w 10 -S ZATA-DOCKER-INGRESS >/dev/null 2>&1; then
+    "$firewall_command" -w 10 -N ZATA-DOCKER-INGRESS
+  fi
+  ensure_rule "$firewall_command" ZATA-DOCKER-INGRESS \
+    -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  ensure_rule "$firewall_command" ZATA-DOCKER-INGRESS \
+    -p tcp -m conntrack --ctstate NEW --ctorigdstport 80 -j ACCEPT
+  ensure_rule "$firewall_command" ZATA-DOCKER-INGRESS \
+    -p tcp -m conntrack --ctstate NEW --ctorigdstport 443 -j ACCEPT
+  ensure_rule "$firewall_command" ZATA-DOCKER-INGRESS -j DROP
+
+  if ! "$firewall_command" -w 10 -C DOCKER-USER \
+    -i "$external_interface" -j ZATA-DOCKER-INGRESS 2>/dev/null; then
+    "$firewall_command" -w 10 -I DOCKER-USER 1 \
+      -i "$external_interface" -j ZATA-DOCKER-INGRESS
+  fi
+done
+
+if ! iptables -w 10 -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null; then
+  iptables -w 10 -I DOCKER-USER 1 -d 169.254.169.254/32 -j DROP
+fi
+if ! iptables -w 10 -C OUTPUT -d 169.254.169.254/32 \
+  -m owner ! --uid-owner 0 -j REJECT 2>/dev/null; then
+  iptables -w 10 -I OUTPUT 1 -d 169.254.169.254/32 \
+    -m owner ! --uid-owner 0 -j REJECT
+fi
+EOF
+  "${SUDO[@]}" chmod 0750 /usr/local/sbin/zata-docker-user-firewall
+
+  "${SUDO[@]}" tee /etc/systemd/system/zata-docker-user-firewall.service >/dev/null <<'EOF'
+[Unit]
+Description=Restrict Docker ingress and instance metadata access
+Requires=docker.service
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zata-docker-user-firewall
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  "${SUDO[@]}" systemctl daemon-reload
+  "${SUDO[@]}" systemctl enable --now zata-docker-user-firewall.service
 }
 
 resolve_https_redirect_default() {
@@ -367,7 +470,7 @@ EOF
 
   if [[ -z "$ACME_EMAIL" ]]; then
     cat <<EOF
-提示：本次没有传 ACME_EMAIL，所以还没有启用 Let's Encrypt 证书解析器。
+提示：本次把 ACME_EMAIL 设为空，所以没有启用 Let's Encrypt 证书解析器。
   - 当前 Traefik 只能提供 HTTP（80 端口），HTTPS 会返回自签证书。
   - 想启用真证书，先把 DNS 解析指到本机，再重跑：
       ACME_EMAIL=you@your-domain.com bash $(basename "$0")
@@ -381,9 +484,17 @@ Let's Encrypt 证书解析器已启用（ACME_EMAIL=${ACME_EMAIL}）。
   - 第一个外部 HTTPS 请求触发后，Traefik 会自动向 LE 申请证书（通常 30 秒内）。
   - 想看 LE 流程：sudo docker logs -f \$(sudo docker ps -q --filter ancestor=${TRAEFIK_IMAGE})
   - 证书存放在 ${TRAEFIK_DIR}/letsencrypt/acme.json，Traefik 自动续期。
-  - 如果浏览器一直显示"此网站的证书无效"，确认 traefik.yml 里 email 字段没被误改成占位。
+  - 证书异常时先看 docker logs 里的 acme 报错，再用 fix-acme-email.sh 修正邮箱。
 
 EOF
+
+    if [[ "$ACME_EMAIL" == "$DEFAULT_ACME_EMAIL" ]]; then
+      cat <<EOF
+提示：当前使用默认占位邮箱 ${DEFAULT_ACME_EMAIL}。它不接收邮件，也不会被 Let's Encrypt 拒绝，
+  所以证书能正常签发；想改成自己的邮箱时重跑本脚本并传 ACME_EMAIL=you@your-domain.com。
+
+EOF
+    fi
   fi
 }
 
@@ -409,6 +520,7 @@ main() {
   fi
 
   install_docker
+  configure_docker_firewall
   create_traefik_network
   write_traefik_files
   start_traefik

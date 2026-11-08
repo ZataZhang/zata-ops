@@ -31,6 +31,8 @@
 
 用户询问项目已经登记的服务器、应用、开发服务 URL、账号或凭据时，先阅读 `docs/guides/private-inventory.md` 与 `docs/guides/private-secrets.md`，再按资料类型查找：
 
+新服务器的操作授权边界也按该指南处理：只问 SSH 连通性时仅检查、不登记；明确要求登记/记录或重复完整流程时直接执行；请求含糊时先检查连通性，再询问是否登记并保存状态快照。
+
 - 服务器、SSH 引用和应用部署信息：`config/private/servers.toml`。
 - 数据库、缓存及其他开发服务的 URL、用户名和凭据关联：使用 `just service-list` / `just service-show <名称>`；底层元数据在 `config/private/services.toml`。
 - OpenSandbox 等已部署服务的访问地址：运行 `just private-config-show`，在对应服务器的应用清单里找 `url` 字段；先完整看一遍该应用记录，不要只按关键词过滤输出。

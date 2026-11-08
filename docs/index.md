@@ -22,7 +22,7 @@ zata-ops 是主要面向 AI Agent 的轻量运维工具箱。通过本机私有�
 - `db migrate` — PostgreSQL snapshots and staged MySQL-to-PostgreSQL migration; see [迁移与恢复指南](guides/backup-and-restore.md).
 - `db role create` / `db role rotate` — create restricted PostgreSQL application roles and rotate their locally stored credentials.
 - `env provision` / `env fix` — VPS + Traefik bootstrap and ACME repair.
-- `logs tail` / `logs search` — Docker and systemd log inspection.
+- `logs tail` / `logs search` — Docker project backend-container and systemd unit log inspection.
 - `tunnel open` / `tunnel list` / `tunnel status` / `tunnel close` — manage background system `ssh` port-forwarding processes.
 - `dashboard` — terminal status snapshot.
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 import shlex
 import shutil
 import subprocess
@@ -73,7 +74,9 @@ def build_provision_plan(
         user: SSH user.
         ssh_key: Optional path to the SSH private key.
         profile: Provisioning profile (e.g. ``vps-traefik``).
-        acme_email: Optional ACME email for Let's Encrypt.
+        acme_email: Optional ACME email. ``None`` keeps the template default
+            placeholder, an empty string disables ACME (HTTP only), and any
+            other value is passed through as the ACME account contact.
         traefik_network: Traefik Docker network name.
         with_monitoring: Whether to deploy the bundled monitoring stack.
         monitoring_domain: Domain used for Grafana Traefik routing.
@@ -93,7 +96,7 @@ def build_provision_plan(
                 inline_script=install_traefik_script,
                 env={
                     "TRAEFIK_NETWORK": traefik_network,
-                    **({"ACME_EMAIL": acme_email} if acme_email else {}),
+                    **({"ACME_EMAIL": acme_email} if acme_email is not None else {}),
                 },
             ),
         },
@@ -276,7 +279,7 @@ def _build_remote_argv(
     Args:
         user: SSH user.
         host: SSH host.
-        ssh_key: Optional private key path.
+        ssh_key: Optional private key path; a leading ``~`` is expanded locally.
         inline_script: Bash script payload.
         args: Optional positional arguments passed to ``bash -s --``.
         env: Optional environment variables exported before the script runs.
@@ -284,9 +287,23 @@ def _build_remote_argv(
     Returns:
         Concrete argv list suitable for ``subprocess.run`` (or dry-run display).
     """
-    ssh_argv_list: list[str] = ["ssh"]
+    ssh_argv_list: list[str] = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "PasswordAuthentication=no",
+        "-o",
+        "KbdInteractiveAuthentication=no",
+        "-o",
+        "PreferredAuthentications=publickey",
+    ]
     if ssh_key:
-        ssh_argv_list.extend(["-i", ssh_key])
+        ssh_argv_list.extend(
+            ["-i", os.path.expanduser(ssh_key), "-o", "IdentitiesOnly=yes"]
+        )
     ssh_argv_list.append(f"{user}@{host}")
 
     env_prefix = ""
