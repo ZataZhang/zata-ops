@@ -1,29 +1,196 @@
-.shared-login-intro {
-  color: var(--pf-v5-global--Color--200);
-  margin-block-end: 1rem;
+:root {
+  --shared-brand: #5e3ec8;
+  --shared-brand-strong: #4a2fa8;
+  --shared-title: #3a1a8c;
+  --shared-text: #4b4b5c;
+  --shared-muted: #8a8a99;
+  --shared-border: #d9d6e4;
+  --pf-v5-global--primary-color--100: var(--shared-brand);
+  --pf-v5-global--primary-color--200: var(--shared-brand-strong);
+  --pf-v5-global--link--Color: var(--shared-brand);
+  --pf-v5-global--link--Color--hover: var(--shared-brand-strong);
 }
 
-.shared-login-consent {
-  color: var(--pf-v5-global--Color--200);
-  font-size: var(--pf-v5-global--FontSize--sm);
-  margin-block-end: 1rem;
+/* 两栏布局：左侧 realm 品牌区，右侧表单区；窄屏时上下排列。 */
+#keycloak-bg {
+  background: #fff;
+}
+
+#keycloak-bg .pf-v5-c-login {
+  background: #fff;
+  min-height: 100vh;
+  padding: 0;
+}
+
+#keycloak-bg .pf-v5-c-login__container {
+  display: grid;
+  gap: 0;
+  grid-template-areas: "header main";
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin: 0;
+  max-width: none;
+  min-height: 100vh;
+  padding: 0;
+  width: 100%;
+}
+
+#keycloak-bg .pf-v5-c-login__header {
+  align-items: center;
+  background: var(--shared-brand);
+  display: flex;
+  grid-area: header;
+  justify-content: center;
+  margin: 0;
+  padding: 3rem;
+}
+
+#keycloak-bg #kc-header-wrapper {
+  color: #fff;
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+/* realm 的 HTML 显示名可放 Logo 图片，这里只约束尺寸。 */
+#keycloak-bg #kc-header-wrapper img {
+  display: block;
+  height: auto;
+  margin: 0 auto 1.5rem;
+  max-height: 10rem;
+  max-width: min(60%, 18rem);
+}
+
+#keycloak-bg .pf-v5-c-login__main {
+  background: #fff;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  grid-area: main;
+  align-self: stretch;
+  justify-content: center;
+  margin: 0;
+  padding: 4rem 2rem;
+}
+
+#keycloak-bg .pf-v5-c-login__main-footer-band {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+#keycloak-bg .pf-v5-c-login__main > * {
+  margin-inline: auto;
+  max-width: 24rem;
+  width: 100%;
+}
+
+#keycloak-bg .pf-v5-c-login__main-header {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-block-end: 2.5rem;
+  padding: 0;
+}
+
+#keycloak-bg #kc-page-title {
+  color: var(--shared-title);
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+#keycloak-bg .pf-v5-c-login__main-body,
+#keycloak-bg .pf-v5-c-login__main-footer {
+  padding-inline: 0;
+}
+
+@media (max-width: 768px) {
+  #keycloak-bg .pf-v5-c-login__container {
+    grid-template-areas: "header" "main";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  #keycloak-bg .pf-v5-c-login__header {
+    padding: 2rem 1rem;
+  }
+
+  #keycloak-bg #kc-header-wrapper {
+    font-size: 1.5rem;
+  }
+
+  #keycloak-bg .pf-v5-c-login__main {
+    justify-content: flex-start;
+    padding: 2.5rem 1rem;
+  }
+}
+
+/* 登录方式：先显示按钮，展开后显示对应表单。 */
+.shared-login-methods {
+  display: grid;
+  gap: 1.25rem;
 }
 
 .shared-login-method {
-  border: 1px solid var(--pf-v5-global--BorderColor--100);
-  border-radius: 0.75rem;
-  margin-block: 0.75rem;
-  padding: 1rem;
+  background: #fff;
+  border: 1px solid var(--shared-border);
+  border-radius: 4px;
 }
 
-.shared-login-method h2 {
-  font-size: 1rem;
-  margin: 0 0 0.75rem;
+.shared-login-method[open] {
+  border-color: var(--shared-brand);
+}
+
+.shared-login-method > summary {
+  align-items: center;
+  color: var(--shared-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 1.05rem;
+  gap: 1.25rem;
+  list-style: none;
+  padding: 1.1rem 1.5rem;
+}
+
+.shared-login-method > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shared-login-method > summary:hover,
+.shared-login-method[open] > summary {
+  color: var(--shared-title);
+}
+
+.shared-login-method > summary:focus-visible {
+  outline: 2px solid var(--shared-brand);
+  outline-offset: 2px;
+}
+
+.shared-login-method[open] > summary {
+  border-block-end: 1px solid var(--shared-border);
+}
+
+.shared-login-icon {
+  fill: none;
+  flex: none;
+  height: 1.6rem;
+  stroke: var(--shared-brand);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  width: 1.6rem;
 }
 
 .shared-login-form {
   display: grid;
   gap: 0.65rem;
+}
+
+.shared-login-method .shared-login-form {
+  padding: 1.25rem 1.5rem 1.5rem;
 }
 
 .shared-login-form input {
@@ -36,32 +203,37 @@
   width: 100%;
 }
 
-.shared-login-divider {
-  align-items: center;
-  color: var(--pf-v5-global--Color--200);
-  display: flex;
-  gap: 0.75rem;
-  justify-content: center;
-  margin-block: 1.25rem;
+.shared-login-intro {
+  color: var(--shared-muted);
+  margin-block-end: 1rem;
+  text-align: center;
 }
 
-.shared-login-divider::before,
-.shared-login-divider::after {
-  background: var(--pf-v5-global--BorderColor--100);
-  content: "";
-  height: 1px;
-  width: 100%;
-}
-
-.shared-login-link,
-.shared-login-register a {
+.shared-login-link {
   text-decoration: underline;
   text-underline-offset: 0.2rem;
 }
 
 .shared-login-register {
-  margin-block-start: 1rem;
+  color: var(--shared-muted);
+  margin-block: 1.75rem 0;
   text-align: center;
+}
+
+.shared-login-register a {
+  margin-inline-start: 0.5rem;
+}
+
+.shared-login-consent {
+  color: var(--shared-muted);
+  font-size: var(--pf-v5-global--FontSize--sm);
+  margin-block-start: 3rem;
+  text-align: center;
+}
+
+.shared-login-consent a {
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
 }
 
 .shared-login-resend {
