@@ -93,5 +93,6 @@
       "displayHeader": "User metadata",
       "displayDescription": "Attributes, which refer to user metadata"
     }
-  ]
+  ],
+  "unmanagedAttributePolicy": "ADMIN_VIEW"
 }
