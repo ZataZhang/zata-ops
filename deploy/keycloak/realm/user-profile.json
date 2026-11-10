@@ -28,7 +28,7 @@
       },
       "permissions": {
         "view": ["admin", "user"],
-        "edit": ["admin", "user"]
+        "edit": ["admin"]
       },
       "multivalued": false
     },
