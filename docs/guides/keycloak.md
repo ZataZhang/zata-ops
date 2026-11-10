@@ -17,6 +17,17 @@
 
 环境变量 `KC_PUBLIC_HOST` 只填主机名，约定为 `auth.<根域名>`。共享 Keycloak 登录页由 `shared-otp-authenticator` 提供密码、邮箱验证码和短信验证码入口；SMTP 配置在 Keycloak 管理后台（Realm settings → Email，保存在 Keycloak 数据库），阿里云短信凭据只配置在 Keycloak 容器。各应用只保存自己的 OIDC client secret，并在 callback 时按自身注册策略创建本地账号。
 
+## 环境划分
+
+| 环境 | Keycloak | 说明 |
+|---|---|---|
+| 本地开发 | `just keycloak-local` 启动的本机实例与 Mailpit | 与线上同镜像、同 realm 模板；验证码邮件进 Mailpit，不发短信 |
+| 自动化测试 | 应用自带的本地 OIDC 替身 | 不依赖外部服务 |
+| 测试环境 | 生产实例上的独立 realm（如 `dewell-test`） | 用户与配置隔离；插件和主题与生产共用，Keycloak 改动先在本地验证 |
+| 生产 | 业务 realm | — |
+
+测试环境不要直接接入生产 realm：测试应用会拿到真实用户的身份信息，测试账号也会混入生产用户。需要正式预发布 Keycloak 改动时，再把测试环境换成独立实例。
+
 ## realm 结构
 
 `realm/realm.json` 定义业务 realm，名称取自必填变量 `KC_REALM`，没有默认值。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。登录页标题取自 `KC_REALM_DISPLAY_NAME`，不填时与 realm 名相同；和 realm 文件的其他内容一样，只在首次导入时生效。浏览器 flow 使用 `shared-browser`：先检查 Keycloak SSO Cookie，再进入中性登录主题 `shared`，由共享 Authenticator 处理密码、邮箱码和短信码。Cookie 和共享 Authenticator 都是 alternative execution，让已有 Realm 会话能跳过凭证页。

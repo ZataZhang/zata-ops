@@ -224,6 +224,31 @@ the target one, back up the database, change `KC_VERSION`, and run
 `docker compose up -d`. Keycloak migrates its schema on start; keep the backup
 until the new version has served logins.
 
+## Local development and the test realm
+
+Develop against a local Keycloak, never against a shared realm:
+
+```bash
+just keycloak-local http://localhost:3000   # app URL; defaults to http://localhost:3000
+just keycloak-local-down                    # stop and remove local containers and data
+```
+
+`compose.local.yaml` builds the same image and imports the same `realm/realm.json`
+as realm `dewell-local`, next to a Mailpit inbox (`http://127.0.0.1:18025/`) that
+receives every email code. Keycloak shares Mailpit's network namespace, so no
+Docker network is created. `scripts/keycloak/local_setup.sh` then points SMTP at
+Mailpit, applies `user-profile.json`, registers the bind actions and creates a
+`freshai` client for the app URL, and prints the `USER_OIDC_*` values to use.
+The admin account (`admin`/`admin`) and client secret are fixed development
+values bound to `127.0.0.1`; SMS is not configured locally, so use email codes.
+
+The shared test environment uses its own realm on the production instance (for
+example `dewell-test`), created from the same templates. Users, clients and
+settings are isolated from production; the image, provider and themes are not,
+so verify Keycloak changes locally before deploying. Set `KC_TEST_REALM` so
+Traefik also exposes `/realms/<test realm>/`. A test realm sends real SMS
+through the shared provider credentials.
+
 ## Contact binding actions
 
 The provider also ships two application-initiated required actions:

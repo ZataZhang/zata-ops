@@ -96,9 +96,10 @@ services:
       traefik.http.routers.zauth-http.rule: "Host(`${KC_PUBLIC_HOST}`)"
       traefik.http.routers.zauth-http.middlewares: zauth-https-redirect
       traefik.http.routers.zauth-http.service: zauth
+      # KC_TEST_REALM 可选：同一实例上的测试 realm 也对公网放行；未设置时与主 realm 规则相同。
       # 公网只放行业务 realm 与静态资源；master realm、/admin/、管理端口 9000 均不经过代理。
       traefik.http.routers.zauth.entrypoints: websecure
-      traefik.http.routers.zauth.rule: "Host(`${KC_PUBLIC_HOST}`) && (PathPrefix(`/realms/${KC_REALM:?Set KC_REALM in .env}/`) || PathPrefix(`/resources/`))"
+      traefik.http.routers.zauth.rule: "Host(`${KC_PUBLIC_HOST}`) && (PathPrefix(`/realms/${KC_REALM:?Set KC_REALM in .env}/`) || PathPrefix(`/realms/${KC_TEST_REALM:-${KC_REALM:?Set KC_REALM in .env}}/`) || PathPrefix(`/resources/`))"
       traefik.http.routers.zauth.tls: "true"
       traefik.http.routers.zauth.tls.certresolver: letsencrypt
       traefik.http.routers.zauth.service: zauth
