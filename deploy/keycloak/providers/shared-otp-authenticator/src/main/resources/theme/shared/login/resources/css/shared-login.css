@@ -220,10 +220,6 @@
   text-align: center;
 }
 
-.shared-login-register a {
-  margin-inline-start: 0.5rem;
-}
-
 .shared-login-consent {
   color: var(--shared-muted);
   font-size: var(--pf-v5-global--FontSize--sm);

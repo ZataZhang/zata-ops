@@ -39,6 +39,22 @@
           "userSetupAllowed": false
         }
       ]
+    },
+    {
+      "alias": "shared-registration-disabled",
+      "description": "Self-registration happens through the shared code sign-in",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "deny-access-authenticator",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        }
+      ]
     }
   ],
   "groups": [
@@ -56,5 +72,6 @@
     "zh-CN",
     "en"
   ],
-  "defaultLocale": "zh-CN"
+  "defaultLocale": "zh-CN",
+  "registrationFlow": "shared-registration-disabled"
 }

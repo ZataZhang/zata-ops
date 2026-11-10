@@ -246,6 +246,13 @@ docker exec <keycloak-container> /opt/keycloak/bin/kcadm.sh create authenticatio
   -r <realm> -s providerId=shared-bind-phone -s name="Bind verified phone number"
 ```
 
+Self-registration happens only through code sign-in: the first verified email
+or SMS code creates the account. Keycloak's own registration page collects no
+verified contact, so the realm binds its registration flow to
+`shared-registration-disabled` (a single Deny Access step) while keeping
+`registrationAllowed` on for the code sign-in. For an existing realm, create
+that flow and set it as Registration flow under Authentication → Flows.
+
 Users cannot edit the email field directly (`user-profile.json` grants edit to
 admins only); binding goes through the verified action instead.
 

@@ -52,8 +52,9 @@
       </details>
     </div>
   <#elseif section = "info">
-    <#if realm.registrationAllowed && !registrationDisabled??>
-      <p class="shared-login-register">${msg("noAccount")} <a href="${url.registrationUrl}">${msg("doRegister")}</a></p>
+    <#-- 新用户首次验证码登录即创建账号；Keycloak 自带注册页不收集联系方式，已在 realm 中禁用。 -->
+    <#if realm.registrationAllowed>
+      <p class="shared-login-register">${msg("sharedAutoRegisterHint")}</p>
     </#if>
     <#-- 应用子主题定义 sharedConsentNotice 时显示条款提示，链接基于该 Client 的 Home URL。 -->
     <#if msg("sharedConsentNotice") != "sharedConsentNotice" && client?? && client.baseUrl?has_content>
