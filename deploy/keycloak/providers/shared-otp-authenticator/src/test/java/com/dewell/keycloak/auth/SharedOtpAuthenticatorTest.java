@@ -39,7 +39,7 @@ final class SharedOtpAuthenticatorTest {
             return Map.of("challenge_id", OLD_CHALLENGE_ID);
         });
 
-        boolean consumedCurrentChallenge = SharedOtpAuthenticator.consumeChallengeIfCurrent(
+        boolean consumedCurrentChallenge = OtpChallenges.consumeChallengeIfCurrent(
             store,
             CURRENT_CHALLENGE_KEY,
             OLD_CHALLENGE_DATA_KEY,
@@ -62,13 +62,13 @@ final class SharedOtpAuthenticatorTest {
             Map.of("challenge_id", OLD_CHALLENGE_ID)
         );
 
-        boolean firstConsumption = SharedOtpAuthenticator.consumeChallengeIfCurrent(
+        boolean firstConsumption = OtpChallenges.consumeChallengeIfCurrent(
             store,
             CURRENT_CHALLENGE_KEY,
             OLD_CHALLENGE_DATA_KEY,
             OLD_CHALLENGE_ID
         );
-        boolean replayedConsumption = SharedOtpAuthenticator.consumeChallengeIfCurrent(
+        boolean replayedConsumption = OtpChallenges.consumeChallengeIfCurrent(
             store,
             CURRENT_CHALLENGE_KEY,
             OLD_CHALLENGE_DATA_KEY,
@@ -112,12 +112,12 @@ final class SharedOtpAuthenticatorTest {
         when(verifiedUser.isEmailVerified()).thenReturn(true);
 
         when(users.getUserByEmail(realm, EMAIL_RECIPIENT)).thenReturn(unverifiedUser);
-        assertNull(SharedOtpAuthenticator.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT));
+        assertNull(OtpChallenges.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT));
 
         when(users.getUserByEmail(realm, EMAIL_RECIPIENT)).thenReturn(verifiedUser);
         assertSame(
             verifiedUser,
-            SharedOtpAuthenticator.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT)
+            OtpChallenges.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT)
         );
     }
 }

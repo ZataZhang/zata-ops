@@ -224,6 +224,31 @@ the target one, back up the database, change `KC_VERSION`, and run
 `docker compose up -d`. Keycloak migrates its schema on start; keep the backup
 until the new version has served logins.
 
+## Contact binding actions
+
+The provider also ships two application-initiated required actions:
+`shared-bind-email` and `shared-bind-phone`. An application sends the user to the
+authorization endpoint with `kc_action=<alias>`; the user enters the new contact,
+confirms a code sent to it, and only then is it written (email marked verified,
+`phone_number_verified` set). A contact held by any other account, verified or
+not, is rejected. Codes for binding and sign-in are stored separately, so one
+cannot be used for the other. Keycloak re-authenticates the user first when the
+last sign-in is older than five minutes. Password changes use the built-in
+`UPDATE_PASSWORD` action.
+
+Provider-defined actions must be registered once per realm after the image is
+deployed (realm import does not add them):
+
+```bash
+docker exec <keycloak-container> /opt/keycloak/bin/kcadm.sh create authentication/register-required-action \
+  -r <realm> -s providerId=shared-bind-email -s name="Bind verified email"
+docker exec <keycloak-container> /opt/keycloak/bin/kcadm.sh create authentication/register-required-action \
+  -r <realm> -s providerId=shared-bind-phone -s name="Bind verified phone number"
+```
+
+Users cannot edit the email field directly (`user-profile.json` grants edit to
+admins only); binding goes through the verified action instead.
+
 ## Upgrade an existing realm with one configuration command
 
 Deploy the custom image first, keeping the existing database volume. On the Docker

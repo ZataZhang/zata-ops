@@ -15,7 +15,13 @@
       <input type="hidden" name="method" value="${channel}">
       <input type="hidden" name="step" value="request">
       <button type="submit" class="pf-v5-c-button pf-m-link">${msg("sharedResendCode")}</button>
-      <a class="shared-login-link" href="${url.loginRestartFlowUrl}">${msg("sharedChooseAnotherMethod")}</a>
+      <#if bindMode??>
+        <#if isAppInitiatedAction??>
+          <button type="submit" name="cancel-aia" value="true" class="pf-v5-c-button pf-m-link" formnovalidate>${msg("doCancel")}</button>
+        </#if>
+      <#else>
+        <a class="shared-login-link" href="${url.loginRestartFlowUrl}">${msg("sharedChooseAnotherMethod")}</a>
+      </#if>
     </form>
   </#if>
 </@layout.registrationLayout>
