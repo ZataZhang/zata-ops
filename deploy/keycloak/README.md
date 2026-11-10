@@ -203,3 +203,43 @@ Read the Keycloak upgrading guide for every version between the current and
 the target one, back up the database, change `KC_VERSION`, and run
 `docker compose up -d`. Keycloak migrates its schema on start; keep the backup
 until the new version has served logins.
+
+## Upgrade an existing realm with one configuration command
+
+Deploy the custom image first, keeping the existing database volume. On the Docker
+host, run the following from the zata-ops checkout. The password is prompted by
+Keycloak; it is not placed in the command or shell history:
+
+```bash
+docker exec -it <keycloak-container> /opt/keycloak/bin/kcadm.sh config credentials \
+  --server http://127.0.0.1:8080 --realm master --user <admin> \
+  --config /tmp/shared-login-kcadm.config
+python3 scripts/keycloak/upgrade_shared_login.py \
+  --container <keycloak-container> --realm <realm> \
+  --snapshot /secure/path/shared-login-before.json
+```
+
+The default mode only reads server configuration and prints a plan. Add `--apply`
+to create the two-step shared flow, select the theme, enable self-registration,
+and make email/first/last name optional while preserving other profile attributes.
+The Provider and theme must already be installed; a conflicting existing flow is
+rejected. The snapshot is created exclusively with mode 0600 before changes;
+choose a new path per run. Repeating the upgrade is supported. Keep an admin
+session open because the browser binding affects every client in the Realm.
+
+If an apply step fails, the command attempts to restore the original realm
+settings and profile. To restore explicitly, use the original snapshot:
+
+```bash
+python3 scripts/keycloak/upgrade_shared_login.py \
+  --container <keycloak-container> --realm <realm> \
+  --snapshot /secure/path/shared-login-before.json --rollback --apply
+```
+
+Rollback restores bindings/profile; it leaves the newly created flow available
+but unbound. SMTP/SMS credentials, SMTP Realm configuration, clients and users
+are not changed by this command. Configure mail delivery in Realm Settings →
+Email and the SMS transport in the Keycloak container environment before testing
+registration. Image deployment and provider installation remain the Compose
+application's responsibility. Remove the temporary Admin CLI credential file
+inside the container after use; it contains an admin session token.

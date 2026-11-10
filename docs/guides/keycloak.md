@@ -87,3 +87,12 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 - `KC_CACHE=local` 之前，重启后的容器会先尝试加入上一个容器登记的集群节点，约 20 秒后才放弃；改为单节点缓存后不再出现该等待。
 
 未在本机验证：Traefik 路径过滤、Let's Encrypt 证书与 Dokploy 部署，需在目标服务器上线时确认。
+
+## 已有 Realm 的共享登录升级
+
+在 Docker 主机的仓库目录运行 `python3 scripts/keycloak/upgrade_shared_login.py
+--container <容器> --realm <Realm> --snapshot <私密快照路径>` 默认只做检查和预览。
+显式加 `--apply` 后创建/校验共享流程、绑定主题并开启自注册；`--rollback --apply`
+按原快照恢复。命令要求先部署自定义镜像并使用容器内 Admin CLI 登录。
+完整登录、执行及恢复命令见仓库 `deploy/keycloak/README.md` 的
+“Upgrade an existing realm with one configuration command”。此命令不负责镜像发布和短信/邮件凭据配置。
