@@ -14,7 +14,12 @@ applications already issued keep working.
 | `compose.yaml` | Plain VPS with an existing Traefik on the external `traefik` network. |
 | `compose.dokploy.yaml` | Host whose 80/443 is managed by Dokploy (`dokploy-network`). |
 | `.env.example` | Variables shared by both compose files. No real values. |
-| `realm/realm.json` | Business realm (name from `KC_REALM`), login policy, team groups. No application clients. |
+| `realm/realm.json` | Business realm (name from `KC_REALM`), shared login flow, email settings and team groups. |
+| `realm/clients/freshai-user.json` | FreshAI user client template with verified phone claim mappers. |
+| `providers/shared-otp-authenticator/` | Versioned password/email-code/SMS-code authenticator and neutral shared login theme. |
+
+The provider bundles the Alibaba SMS SDK dependencies but excludes Bouncy Castle;
+Keycloak supplies its own crypto libraries, avoiding duplicate classes at startup.
 
 The design notes and the per-application onboarding steps live in
 `docs/guides/keycloak.md`.
@@ -37,6 +42,9 @@ The design notes and the per-application onboarding steps live in
 | --- | --- |
 | `KC_DB_PASSWORD` | Password of the `keycloak` database user. |
 | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | Temporary master realm admin. Create a permanent admin, then delete this user. |
+| `KC_SHARED_OTP_HMAC_SECRET` | Stable random HMAC key used to protect OTP records and rate-limit keys. |
+| `KC_SMTP_*` | SMTP transport for email codes, email verification and recovery mail. |
+| `KC_OTP_SMS_*` | Alibaba Cloud Dypnsapi sender for mainland China SMS verification codes. |
 
 Generate each value independently and keep it in the protected remote `.env`
 (or the Dokploy Environment panel) and a private credential store. Never add
@@ -45,6 +53,7 @@ the values to this repository.
 ```bash
 openssl rand -hex 24   # KC_DB_PASSWORD
 openssl rand -hex 24   # KC_BOOTSTRAP_ADMIN_PASSWORD
+openssl rand -hex 32   # KC_SHARED_OTP_HMAC_SECRET
 ```
 
 ## Install on a plain VPS
@@ -106,6 +115,9 @@ compose files mount `realm/realm.json` as `${KC_REALM}-realm.json`.
 on later starts the log shows that the import was skipped. The file is
 therefore the source for creating the realm from scratch, not a sync tool.
 `${...}` placeholders in the file resolve from the container environment.
+Keycloak restricts realm placeholders to names in
+`KC_SPI_ADMIN__ALLOWED_SYSTEM_VARIABLES`; both compose files allow only the
+realm name and the SMTP fields used by this file.
 
 For a change to a running realm (new client, new team group, new role):
 
@@ -120,11 +132,51 @@ For a change to a running realm (new client, new team group, new role):
      -r <realm> -s name=team-a
    ```
 
-The realm file ships no application client. Register one client per
-application and environment when that application integrates, with its real
-callback URL; `docs/guides/keycloak.md` has the client template. Develop an
-application's OIDC login against a local Keycloak started from this same
-compose file, not against the production realm.
+The shared OTP flow creates a user with only the contact that was verified.
+Apply `realm/user-profile.json` so email, first name and last name remain
+optional; this lets phone-only users finish their first login without an
+unrelated profile-completion screen. Copy the file into the Keycloak
+container and update the realm profile:
+
+```bash
+docker cp deploy/keycloak/realm/user-profile.json \
+  <keycloak-container>:/tmp/shared-user-profile.json
+docker exec <keycloak-container> /opt/keycloak/bin/kcadm.sh update users/profile \
+  -r <realm> -f /tmp/shared-user-profile.json
+```
+
+The realm file ships no live application client. Register one confidential
+client per application and environment with its exact callback URL; the
+`realm/clients/freshai-user.json` file is the FreshAI user-client template.
+Develop an application's OIDC login against a local Keycloak started from
+this same compose file, not against the production realm.
+
+The realm configures `shared-browser` as the browser flow and `shared` as the
+neutral login theme. Its first alternative checks the Keycloak SSO cookie; the
+custom authenticator is the next alternative for password, email-code and
+SMS-code sign-in. That order lets an existing Realm session skip credential
+entry for another client. The authenticator creates a Keycloak user after OTP
+proof when realm self-registration is enabled; each application separately
+checks its own registration policy before creating a local account. OTP attempts
+and per-IP code requests reserve expiring slots atomically, so concurrent
+requests cannot bypass their limits. SMTP and Aliyun SMS credentials stay in
+the Keycloak container and are not copied to app services.
+
+Realm import is skipped when the realm already exists. Updating
+`realm/realm.json` therefore does not change an existing `dewell` realm.
+After building and deploying the custom image, apply the shared flow, login
+theme, optional user profile, registration/email verification and SMTP settings
+through the Keycloak Admin Console or `kcadm.sh` command above. Review the
+change before setting Browser Flow to
+`shared-browser`; that binding affects every client in the realm. Keep a
+recovery admin session open while applying it.
+
+For FreshAI, copy `realm/clients/freshai-user.json`, replace the example
+redirect URI with the callback for that environment, and apply it to the
+`freshai` confidential client. Do not put the generated client secret in this
+repository. Local callback testing also requires the local callback to be
+explicitly added to the client's redirect allowlist. Keep `freshai-admin` as
+a separate client.
 
 ## Backup and restore
 

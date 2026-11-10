@@ -1,0 +1,57 @@
+{
+  "clientId": "freshai",
+  "name": "FreshAI user portal",
+  "protocol": "openid-connect",
+  "enabled": true,
+  "publicClient": false,
+  "standardFlowEnabled": true,
+  "implicitFlowEnabled": false,
+  "directAccessGrantsEnabled": false,
+  "serviceAccountsEnabled": false,
+  "redirectUris": [
+    "https://freshai.example.com/api/auth/user/oidc/callback"
+  ],
+  "webOrigins": [],
+  "attributes": {
+    "pkce.code.challenge.method": "S256"
+  },
+  "defaultClientScopes": [
+    "web-origins",
+    "acr",
+    "profile",
+    "email"
+  ],
+  "optionalClientScopes": [
+    "phone"
+  ],
+  "protocolMappers": [
+    {
+      "name": "verified phone number",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "phone_number",
+        "claim.name": "phone_number",
+        "jsonType.label": "String",
+        "id.token.claim": "true",
+        "access.token.claim": "false",
+        "userinfo.token.claim": "true"
+      }
+    },
+    {
+      "name": "phone number verified flag",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "phone_number_verified",
+        "claim.name": "phone_number_verified",
+        "jsonType.label": "boolean",
+        "id.token.claim": "true",
+        "access.token.claim": "false",
+        "userinfo.token.claim": "true"
+      }
+    }
+  ]
+}

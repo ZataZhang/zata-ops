@@ -15,15 +15,18 @@
 | 管理后台 | 绑定 `127.0.0.1:18180`，经 SSH 隧道访问；首次部署后把 master realm 的 Frontend URL 设为该隧道地址（命令见 README） | 与 nacos 的 Console 一致；端口避开本机 nacos 开发实例占用的 18080 |
 | 数据库 | 独立 PostgreSQL，绑定 `127.0.0.1:15432` | 账号数据与业务库隔离；回环端口供 `zata-ops db backup` 使用 |
 
-环境变量 `KC_PUBLIC_HOST` 只填主机名，约定为 `auth.<根域名>`。SMTP 暂未配置，因此 realm 关闭了自助注册、邮箱验证与找回密码，账号由管理员创建。
+环境变量 `KC_PUBLIC_HOST` 只填主机名，约定为 `auth.<根域名>`。共享 Keycloak 登录页由 `shared-otp-authenticator` 提供密码、邮箱验证码和短信验证码入口；SMTP 与阿里云短信凭据只配置在 Keycloak 容器。各应用只保存自己的 OIDC client secret，并在 callback 时按自身注册策略创建本地账号。
 
 ## realm 结构
 
-`realm/realm.json` 定义业务 realm，名称取自必填变量 `KC_REALM`，没有默认值。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。登录页标题取自 `KC_REALM_DISPLAY_NAME`，不填时与 realm 名相同；和 realm 文件的其他内容一样，只在首次导入时生效。
+`realm/realm.json` 定义业务 realm，名称取自必填变量 `KC_REALM`，没有默认值。Keycloak 要求导入文件名为 `<realm>-realm.json`，所以 compose 按 `KC_REALM` 命名挂载目标；文件名与 realm 名不一致时 Keycloak 会拒绝启动。登录页标题取自 `KC_REALM_DISPLAY_NAME`，不填时与 realm 名相同；和 realm 文件的其他内容一样，只在首次导入时生效。浏览器 flow 使用 `shared-browser`：先检查 Keycloak SSO Cookie，再进入中性登录主题 `shared`，由共享 Authenticator 处理密码、邮箱码和短信码。Cookie 和共享 Authenticator 都是 alternative execution，让已有 Realm 会话能跳过凭证页。
 
 - 团队用组表示，放在 `/teams` 下，例如 `/teams/platform`。
 - 启用暴力破解防护，密码至少 12 位。
-- 不预置任何应用客户端。客户端在应用真正接入时按真实回调地址登记；开发应用的 OIDC 登录时，用同一份 compose 在本机起 Keycloak 自测，不往生产 realm 放开发用客户端。
+- 每个应用和环境独立登记 confidential OIDC client，回调 URI 精确匹配；`realm/clients/freshai-user.json` 是 FreshAI 普通用户 client 模板。管理端仍使用独立 `freshai-admin` client。
+- 邮箱验证码和 Keycloak 注册验证依赖 SMTP；手机号验证码由 Keycloak custom authenticator 调用阿里云 Dypnsapi。FreshAI 等应用容器不发送共享登录验证码。错码次数和每 IP 请求配额使用原子过期槽位；每次重发生成独立挑战键，避免并发重发时旧验证码消费新挑战。
+- 首次登录只收集实际选择并验证的联系方式；部署后用 `kcadm.sh update users/profile -r <realm> -f realm/user-profile.json` 将邮箱、名字和姓氏设为可选，避免手机号新用户被默认 User Profile 要求补填邮箱。
+- 开发应用的 OIDC 登录时，用本机 Keycloak 实例测试，不往生产 realm 放开发用 client。
 
 realm 文件只在 realm 不存在时导入，之后的改动先改文件并审查，再用 `kcadm.sh` 应用到线上，步骤见 README。
 
@@ -32,7 +35,7 @@ realm 文件只在 realm 不存在时导入，之后的改动先改文件并审�
 1. 在 realm 文件中为应用的每个环境新增一个 Client（模板见下），审查后用 `kcadm.sh` 应用到线上。
 2. 把该应用的客户端角色授给需要访问它的团队组（组的 `clientRoles`），用户随组获得角色。
 3. 应用侧配置 issuer（`https://<KC_PUBLIC_HOST>/realms/<KC_REALM>`）、Client ID 与 Client Secret；Client Secret 只放在部署环境。
-4. 应用用 `(iss, sub)` 映射本地用户，不用邮箱当主键；没有 `user` 角色的用户拒绝登录。
+4. 应用用 `(iss, sub)` 映射本地用户，不用邮箱当主键。各应用继续在本地管理用户状态和业务权限；共享 Realm 的组或角色不会自动提升 FreshAI 的管理员权限。
 
 ### Client 模板
 

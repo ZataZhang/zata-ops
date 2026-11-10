@@ -3,17 +3,56 @@
   "displayName": "${KC_REALM_DISPLAY_NAME}",
   "enabled": true,
   "sslRequired": "external",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
-  "resetPasswordAllowed": false,
-  "verifyEmail": false,
+  "resetPasswordAllowed": true,
+  "verifyEmail": true,
+  "loginTheme": "shared",
+  "smtpServer": {
+    "host": "${KC_SMTP_HOST}",
+    "port": "${KC_SMTP_PORT}",
+    "from": "${KC_SMTP_FROM}",
+    "fromDisplayName": "${KC_SMTP_FROM_DISPLAY_NAME}",
+    "replyTo": "${KC_SMTP_REPLY_TO}",
+    "auth": "${KC_SMTP_AUTH}",
+    "user": "${KC_SMTP_USER}",
+    "password": "${KC_SMTP_PASSWORD}",
+    "ssl": "${KC_SMTP_SSL}",
+    "starttls": "${KC_SMTP_STARTTLS}"
+  },
   "bruteForceProtected": true,
   "permanentLockout": false,
   "failureFactor": 5,
   "waitIncrementSeconds": 60,
   "maxFailureWaitSeconds": 900,
   "passwordPolicy": "length(12) and notUsername and notEmail",
+  "browserFlow": "shared-browser",
+  "authenticationFlows": [
+    {
+      "alias": "shared-browser",
+      "description": "Shared password, email code, and SMS code browser login",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "shared-otp-authenticator",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
   "groups": [
     {
       "name": "teams",
