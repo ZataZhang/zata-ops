@@ -128,7 +128,8 @@ def test_env_provision_omits_acme_email_by_default() -> None:
     )
     assert plan_payload["acme_email"] is None
     install_argv = plan_payload["remote_commands"][0]["argv"]
-    assert "ACME_EMAIL" not in install_argv[-1]
+    # 只检查 bash -s 之前的环境变量前缀；脚本正文的注释和校验本身会提到 ACME_EMAIL。
+    assert "ACME_EMAIL" not in install_argv[-1].split("bash -s", 1)[0]
 
 
 def test_env_provision_no_acme_passes_empty_email() -> None:
@@ -173,4 +174,4 @@ def test_install_traefik_template_matches_deploy_copy() -> None:
         repo_root / "deploy" / "vps-traefik" / "install-docker-traefik.sh"
     ).read_text(encoding="utf-8")
     assert template_copy == deploy_copy
-    assert "ACME_EMAIL=${ACME_EMAIL-$DEFAULT_ACME_EMAIL}" in template_copy
+    assert 'ACME_EMAIL="${ACME_EMAIL-$DEFAULT_ACME_EMAIL}"' in template_copy
