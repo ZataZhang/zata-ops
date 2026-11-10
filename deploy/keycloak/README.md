@@ -177,7 +177,9 @@ requests cannot bypass their limits. SMTP settings stay in the Keycloak
 database and Aliyun SMS credentials in the Keycloak container; neither is copied
 to app services. A failed code delivery is logged with the channel and
 exception type only, without the address or phone number, and releases the
-resend lock so the user can retry at once.
+resend lock so the user can retry at once. Email-code sign-in only matches an account
+whose email is verified, so an address someone typed into another account
+cannot be used to enter that account.
 
 Realm import is skipped when the realm already exists. Updating
 `realm/realm.json` therefore does not change an existing `dewell` realm.

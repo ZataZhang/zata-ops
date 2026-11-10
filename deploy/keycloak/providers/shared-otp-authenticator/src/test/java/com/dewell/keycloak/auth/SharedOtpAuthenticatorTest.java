@@ -1,6 +1,7 @@
 package com.dewell.keycloak.auth;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -19,6 +20,7 @@ import org.keycloak.models.UserProvider;
 
 final class SharedOtpAuthenticatorTest {
     private static final String PHONE_RECIPIENT = "+8613800000000";
+    private static final String EMAIL_RECIPIENT = "user@example.com";
     private static final String CURRENT_CHALLENGE_KEY = "otp:current";
     private static final String OLD_CHALLENGE_ID = "challenge-old";
     private static final String NEW_CHALLENGE_ID = "challenge-new";
@@ -96,5 +98,26 @@ final class SharedOtpAuthenticatorTest {
         assertSame(user, createdUser);
         verify(user).setSingleAttribute("phone_number", PHONE_RECIPIENT);
         verify(user).setSingleAttribute("phone_number_verified", "true");
+    }
+
+    @Test
+    void emailCodeOnlyMatchesVerifiedEmail() {
+        KeycloakSession session = mock(KeycloakSession.class);
+        UserProvider users = mock(UserProvider.class);
+        RealmModel realm = mock(RealmModel.class);
+        UserModel unverifiedUser = mock(UserModel.class);
+        UserModel verifiedUser = mock(UserModel.class);
+        when(session.users()).thenReturn(users);
+        when(unverifiedUser.isEmailVerified()).thenReturn(false);
+        when(verifiedUser.isEmailVerified()).thenReturn(true);
+
+        when(users.getUserByEmail(realm, EMAIL_RECIPIENT)).thenReturn(unverifiedUser);
+        assertNull(SharedOtpAuthenticator.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT));
+
+        when(users.getUserByEmail(realm, EMAIL_RECIPIENT)).thenReturn(verifiedUser);
+        assertSame(
+            verifiedUser,
+            SharedOtpAuthenticator.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT)
+        );
     }
 }

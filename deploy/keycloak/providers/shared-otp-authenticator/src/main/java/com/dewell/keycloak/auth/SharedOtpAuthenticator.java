@@ -444,14 +444,16 @@ final class SharedOtpAuthenticator implements Authenticator {
         return session.users().getUserByUsername(realm, identifier);
     }
 
-    private UserModel findUserByChannel(
+    static UserModel findUserByChannel(
         KeycloakSession session,
         RealmModel realm,
         String channel,
         String recipient
     ) {
         if ("email".equals(channel)) {
-            return session.users().getUserByEmail(realm, recipient);
+            // 验证码只证明收件人拥有该邮箱；未验证的邮箱可能是他人填写的，不能借此登录那个账号。
+            UserModel emailUser = session.users().getUserByEmail(realm, recipient);
+            return emailUser != null && emailUser.isEmailVerified() ? emailUser : null;
         }
         List<UserModel> matches = session.users()
             .searchForUserByUserAttributeStream(realm, "phone_number", recipient)
