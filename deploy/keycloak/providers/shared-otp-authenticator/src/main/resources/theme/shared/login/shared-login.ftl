@@ -4,6 +4,10 @@
     ${msg("sharedLoginTitle")}
   <#elseif section = "form">
     <div class="shared-login-intro">${msg("sharedLoginIntro")}</div>
+    <#-- 应用子主题定义 sharedConsentNotice 时显示条款提示，链接基于该 Client 的 Home URL。 -->
+    <#if msg("sharedConsentNotice") != "sharedConsentNotice" && client?? && client.baseUrl?has_content>
+      <p class="shared-login-consent">${kcSanitize(msg("sharedConsentNotice", client.baseUrl?remove_ending("/")))?no_esc}</p>
+    </#if>
     <section class="shared-login-method">
       <h2>${msg("sharedPasswordTitle")}</h2>
       <form action="${url.loginAction}" method="post" class="shared-login-form">

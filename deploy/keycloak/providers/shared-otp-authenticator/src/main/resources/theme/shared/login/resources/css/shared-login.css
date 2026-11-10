@@ -3,6 +3,12 @@
   margin-block-end: 1rem;
 }
 
+.shared-login-consent {
+  color: var(--pf-v5-global--Color--200);
+  font-size: var(--pf-v5-global--FontSize--sm);
+  margin-block-end: 1rem;
+}
+
 .shared-login-method {
   border: 1px solid var(--pf-v5-global--BorderColor--100);
   border-radius: 0.75rem;

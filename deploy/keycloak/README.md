@@ -43,7 +43,6 @@ The design notes and the per-application onboarding steps live in
 | `KC_DB_PASSWORD` | Password of the `keycloak` database user. |
 | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | Temporary master realm admin. Create a permanent admin, then delete this user. |
 | `KC_SHARED_OTP_HMAC_SECRET` | Stable random HMAC key used to protect OTP records and rate-limit keys. |
-| `KC_SMTP_*` | SMTP transport for email codes, email verification and recovery mail. |
 | `KC_OTP_SMS_*` | Alibaba Cloud Dypnsapi sender for mainland China SMS verification codes. |
 
 Generate each value independently and keep it in the protected remote `.env`
@@ -114,10 +113,19 @@ compose files mount `realm/realm.json` as `${KC_REALM}-realm.json`.
 `--import-realm` imports it only when the realm does not exist yet:
 on later starts the log shows that the import was skipped. The file is
 therefore the source for creating the realm from scratch, not a sync tool.
-`${...}` placeholders in the file resolve from the container environment.
-Keycloak restricts realm placeholders to names in
-`KC_SPI_ADMIN__ALLOWED_SYSTEM_VARIABLES`; both compose files allow only the
-realm name and the SMTP fields used by this file.
+`${...}` placeholders in the file resolve from the container environment at
+import time only; an unset variable stays literal. Keycloak restricts realm
+placeholders to names in `KC_SPI_ADMIN__ALLOWED_SYSTEM_VARIABLES`; both compose
+files allow only the realm name and display name.
+
+SMTP is not part of the file or the container environment. A running realm
+does not resolve `${...}` in its SMTP settings, and the Admin API rejects them
+for the sender and reply-to addresses. After the first start, configure Realm
+settings → Email once with literal values (bare addresses in `from` and
+`replyTo`, the display name in its own field, `auth` set to `true`). The
+password is stored in the Keycloak database and masked by the Admin API; treat
+database backups accordingly. Changing mail settings later happens in the same
+place, not in the deployment environment.
 
 For a change to a running realm (new client, new team group, new role):
 
@@ -135,7 +143,13 @@ For a change to a running realm (new client, new team group, new role):
 The shared OTP flow creates a user with only the contact that was verified.
 Apply `realm/user-profile.json` so email, first name and last name remain
 optional; this lets phone-only users finish their first login without an
-unrelated profile-completion screen. Copy the file into the Keycloak
+unrelated profile-completion screen. It also declares the `phone_number` and
+`phone_number_verified` attributes written by SMS sign-in, so administrators
+can see them on the user details page; users cannot view or edit them.
+SMS sign-in names a new user by the E.164 number (for example
+`+8613800000000`) and email sign-in by the address, so the admin user search
+matches number fragments such as `*13800*`. The username reaches every client
+as `preferred_username`. Copy the file into the Keycloak
 container and update the realm profile:
 
 ```bash
@@ -159,8 +173,11 @@ entry for another client. The authenticator creates a Keycloak user after OTP
 proof when realm self-registration is enabled; each application separately
 checks its own registration policy before creating a local account. OTP attempts
 and per-IP code requests reserve expiring slots atomically, so concurrent
-requests cannot bypass their limits. SMTP and Aliyun SMS credentials stay in
-the Keycloak container and are not copied to app services.
+requests cannot bypass their limits. SMTP settings stay in the Keycloak
+database and Aliyun SMS credentials in the Keycloak container; neither is copied
+to app services. A failed code delivery is logged with the channel and
+exception type only, without the address or phone number, and releases the
+resend lock so the user can retry at once.
 
 Realm import is skipped when the realm already exists. Updating
 `realm/realm.json` therefore does not change an existing `dewell` realm.
@@ -172,7 +189,8 @@ change before setting Browser Flow to
 recovery admin session open while applying it.
 
 For FreshAI, copy `realm/clients/freshai-user.json`, replace the example
-redirect URI with the callback for that environment, and apply it to the
+Home URL (`baseUrl`, used for the terms and privacy links of the `freshai`
+login theme) and redirect URI with the callback for that environment, and apply it to the
 `freshai` confidential client. Do not put the generated client secret in this
 repository. Local callback testing also requires the local callback to be
 explicitly added to the client's redirect allowlist. Keep `freshai-admin` as

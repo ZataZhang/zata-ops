@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.Authenticator;
@@ -30,6 +31,7 @@ import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.services.managers.BruteForceProtector;
 
 final class SharedOtpAuthenticator implements Authenticator {
+    private static final Logger LOG = Logger.getLogger(SharedOtpAuthenticator.class);
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9][0-9]{9}$");
@@ -149,7 +151,18 @@ final class SharedOtpAuthenticator implements Authenticator {
                 String reservationKey = challengeKey + ":send-lock";
                 if (store.putIfAbsent(reservationKey, (long) RESEND_COOLDOWN_SECONDS)) {
                     String verificationCode = newVerificationCode();
-                    sendCode(context, channel, recipient, verificationCode);
+                    try {
+                        sendCode(context, channel, recipient, verificationCode);
+                    } catch (Exception deliveryError) {
+                        // 不记录收件地址与异常消息（可能含地址）；释放冷却锁，避免重试命中中性提示而掩盖失败。
+                        store.remove(reservationKey);
+                        LOG.warnf(
+                            "Shared OTP delivery failed: channel=%s, error=%s",
+                            channel,
+                            deliveryError.getClass().getName()
+                        );
+                        throw deliveryError;
+                    }
                     String challengeId = UUID.randomUUID().toString();
                     Map<String, String> challengeValues = new HashMap<>();
                     challengeValues.put("code_hash", codeHash(realm, channel, recipient, verificationCode));
@@ -291,16 +304,13 @@ final class SharedOtpAuthenticator implements Authenticator {
         context.success();
     }
 
-    private UserModel createVerifiedUser(
+    static UserModel createVerifiedUser(
         KeycloakSession session,
         RealmModel realm,
         String channel,
         String recipient
     ) {
-        String username = "email".equals(channel)
-            ? recipient
-            : "phone_" + UUID.randomUUID().toString().replace("-", "");
-        UserModel user = session.users().addUser(realm, username);
+        UserModel user = session.users().addUser(realm, recipient);
         user.setEnabled(true);
         if ("email".equals(channel)) {
             user.setEmail(recipient);

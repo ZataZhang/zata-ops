@@ -61,6 +61,30 @@
         "edit": ["admin", "user"]
       },
       "multivalued": false
+    },
+    {
+      "name": "phone_number",
+      "displayName": "Phone number",
+      "validations": {
+        "pattern": {
+          "pattern": "^\\+861[3-9][0-9]{9}$",
+          "error-message": "Use +86 followed by an 11-digit mainland mobile number."
+        }
+      },
+      "permissions": {
+        "view": ["admin"],
+        "edit": ["admin"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "phone_number_verified",
+      "displayName": "Phone number verified",
+      "permissions": {
+        "view": ["admin"],
+        "edit": []
+      },
+      "multivalued": false
     }
   ],
   "groups": [

@@ -15,7 +15,7 @@
 | 管理后台 | 绑定 `127.0.0.1:18180`，经 SSH 隧道访问；首次部署后把 master realm 的 Frontend URL 设为该隧道地址（命令见 README） | 与 nacos 的 Console 一致；端口避开本机 nacos 开发实例占用的 18080 |
 | 数据库 | 独立 PostgreSQL，绑定 `127.0.0.1:15432` | 账号数据与业务库隔离；回环端口供 `zata-ops db backup` 使用 |
 
-环境变量 `KC_PUBLIC_HOST` 只填主机名，约定为 `auth.<根域名>`。共享 Keycloak 登录页由 `shared-otp-authenticator` 提供密码、邮箱验证码和短信验证码入口；SMTP 与阿里云短信凭据只配置在 Keycloak 容器。各应用只保存自己的 OIDC client secret，并在 callback 时按自身注册策略创建本地账号。
+环境变量 `KC_PUBLIC_HOST` 只填主机名，约定为 `auth.<根域名>`。共享 Keycloak 登录页由 `shared-otp-authenticator` 提供密码、邮箱验证码和短信验证码入口；SMTP 配置在 Keycloak 管理后台（Realm settings → Email，保存在 Keycloak 数据库），阿里云短信凭据只配置在 Keycloak 容器。各应用只保存自己的 OIDC client secret，并在 callback 时按自身注册策略创建本地账号。
 
 ## realm 结构
 
@@ -23,9 +23,9 @@
 
 - 团队用组表示，放在 `/teams` 下，例如 `/teams/platform`。
 - 启用暴力破解防护，密码至少 12 位。
-- 每个应用和环境独立登记 confidential OIDC client，回调 URI 精确匹配；`realm/clients/freshai-user.json` 是 FreshAI 普通用户 client 模板。管理端仍使用独立 `freshai-admin` client。
-- 邮箱验证码和 Keycloak 注册验证依赖 SMTP；手机号验证码由 Keycloak custom authenticator 调用阿里云 Dypnsapi。FreshAI 等应用容器不发送共享登录验证码。错码次数和每 IP 请求配额使用原子过期槽位；每次重发生成独立挑战键，避免并发重发时旧验证码消费新挑战。
-- 首次登录只收集实际选择并验证的联系方式；部署后用 `kcadm.sh update users/profile -r <realm> -f realm/user-profile.json` 将邮箱、名字和姓氏设为可选，避免手机号新用户被默认 User Profile 要求补填邮箱。
+- 每个应用和环境独立登记 confidential OIDC client，回调 URI 精确匹配；`realm/clients/freshai-user.json` 是 FreshAI 普通用户 client 模板。应用需要专属登录文案时，新建继承 `shared` 的子主题并在 Client 的 Login theme 中选择它；子主题定义 `sharedConsentNotice` 时，登录页按 Client 的 Home URL 显示 `/terms` 与 `/privacy` 条款链接，未设置 Home URL 则不显示。FreshAI 使用 `freshai` 子主题。管理端仍使用独立 `freshai-admin` client。
+- 邮箱验证码和 Keycloak 注册验证依赖 SMTP。运行中的 realm 不会解析 SMTP 设置里的 `${...}`，部署后须在后台填写实际值，之后改邮箱也在后台改；发信失败时日志只记渠道和异常类型。登录页默认中文，可切换英文；手机号验证码由 Keycloak custom authenticator 调用阿里云 Dypnsapi。FreshAI 等应用容器不发送共享登录验证码。错码次数和每 IP 请求配额使用原子过期槽位；每次重发生成独立挑战键，避免并发重发时旧验证码消费新挑战。
+- 首次登录只收集实际选择并验证的联系方式；部署后用 `kcadm.sh update users/profile -r <realm> -f realm/user-profile.json` 将邮箱、名字和姓氏设为可选，避免手机号新用户被默认 User Profile 要求补填邮箱。该文件同时声明短信登录写入的 `phone_number`（`+86` 加 11 位号码）和 `phone_number_verified`，仅管理员可在用户详情页查看，用户本人不可查看或修改。邮箱验证码新建的用户以邮箱为用户名，短信验证码新建的用户以 E.164 手机号（如 `+8613800000000`）为用户名，管理后台默认搜索框可按号码片段查找（`*13800*`）；用户名会以 `preferred_username` 出现在各应用的令牌中。
 - 开发应用的 OIDC 登录时，用本机 Keycloak 实例测试，不往生产 realm 放开发用 client。
 
 realm 文件只在 realm 不存在时导入，之后的改动先改文件并审查，再用 `kcadm.sh` 应用到线上，步骤见 README。

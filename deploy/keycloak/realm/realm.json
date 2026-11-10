@@ -9,18 +9,6 @@
   "resetPasswordAllowed": true,
   "verifyEmail": true,
   "loginTheme": "shared",
-  "smtpServer": {
-    "host": "${KC_SMTP_HOST}",
-    "port": "${KC_SMTP_PORT}",
-    "from": "${KC_SMTP_FROM}",
-    "fromDisplayName": "${KC_SMTP_FROM_DISPLAY_NAME}",
-    "replyTo": "${KC_SMTP_REPLY_TO}",
-    "auth": "${KC_SMTP_AUTH}",
-    "user": "${KC_SMTP_USER}",
-    "password": "${KC_SMTP_PASSWORD}",
-    "ssl": "${KC_SMTP_SSL}",
-    "starttls": "${KC_SMTP_STARTTLS}"
-  },
   "bruteForceProtected": true,
   "permanentLockout": false,
   "failureFactor": 5,
@@ -62,5 +50,11 @@
         }
       ]
     }
-  ]
+  ],
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "zh-CN",
+    "en"
+  ],
+  "defaultLocale": "zh-CN"
 }

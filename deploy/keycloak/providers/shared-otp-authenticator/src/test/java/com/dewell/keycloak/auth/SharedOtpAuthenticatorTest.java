@@ -1,6 +1,7 @@
 package com.dewell.keycloak.auth;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -10,9 +11,14 @@ import static org.mockito.Mockito.when;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
 import org.keycloak.models.SingleUseObjectProvider;
+import org.keycloak.models.UserModel;
+import org.keycloak.models.UserProvider;
 
 final class SharedOtpAuthenticatorTest {
+    private static final String PHONE_RECIPIENT = "+8613800000000";
     private static final String CURRENT_CHALLENGE_KEY = "otp:current";
     private static final String OLD_CHALLENGE_ID = "challenge-old";
     private static final String NEW_CHALLENGE_ID = "challenge-new";
@@ -69,5 +75,26 @@ final class SharedOtpAuthenticatorTest {
 
         assertTrue(firstConsumption);
         assertFalse(replayedConsumption);
+    }
+
+    @Test
+    void phoneUserIsNamedByE164Number() {
+        KeycloakSession session = mock(KeycloakSession.class);
+        UserProvider users = mock(UserProvider.class);
+        RealmModel realm = mock(RealmModel.class);
+        UserModel user = mock(UserModel.class);
+        when(session.users()).thenReturn(users);
+        when(users.addUser(realm, PHONE_RECIPIENT)).thenReturn(user);
+
+        UserModel createdUser = SharedOtpAuthenticator.createVerifiedUser(
+            session,
+            realm,
+            "sms",
+            PHONE_RECIPIENT
+        );
+
+        assertSame(user, createdUser);
+        verify(user).setSingleAttribute("phone_number", PHONE_RECIPIENT);
+        verify(user).setSingleAttribute("phone_number_verified", "true");
     }
 }

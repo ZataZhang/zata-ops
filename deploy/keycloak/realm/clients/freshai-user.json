@@ -13,7 +13,8 @@
   ],
   "webOrigins": [],
   "attributes": {
-    "pkce.code.challenge.method": "S256"
+    "pkce.code.challenge.method": "S256",
+    "login_theme": "freshai"
   },
   "defaultClientScopes": [
     "web-origins",
@@ -53,5 +54,6 @@
         "userinfo.token.claim": "true"
       }
     }
-  ]
+  ],
+  "baseUrl": "https://freshai.example.com"
 }
