@@ -241,7 +241,7 @@ The admin account (`admin`/`admin`) and client secret are fixed development
 values bound to `127.0.0.1`; SMS is not configured locally, so use email codes.
 
 The shared test environment uses its own realm on the production instance (for
-example `dewell-test`), created from the same templates. Users, clients and
+example `test-dewell`), created from the same templates. Users, clients and
 settings are isolated from production; the image, provider and themes are not,
 so verify Keycloak changes locally before deploying. Set `KC_TEST_REALM` so
 Traefik also exposes `/realms/<test realm>/`. A test realm sends real SMS
