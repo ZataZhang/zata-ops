@@ -32,6 +32,7 @@ just testing down          # 停栈（保留卷）
 | qdrant | 6333 / 6334 | 向量库。 |
 | ragflow（含内部 mysql、infinity） | 9380 | RAG 流水线服务；两个内部依赖不发布宿主端口。 |
 | jaeger | 16686 / 4317 / 4318 | 本地 OTLP trace 接收端与 UI（生产对应 ARMS）。 |
+| keycloak / mailpit | 18280 / 8025（仅回环） | 本地共享登录：与线上同镜像、同 realm 模板（`dewell-local`），验证码邮件进 Mailpit；用 `just keycloak-local [应用地址]` 启动并初始化，`just keycloak-local-down` 只移除这两个容器。 |
 | sandbox-egress-proxy | —（仅内部网络 `zata-sandbox-egress`） | docker 档沙箱的出网 allowlist 代理，放行清单见 `deploy/sandbox/egress-proxy/squid.conf`。 |
 
 注意事项：

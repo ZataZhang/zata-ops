@@ -523,11 +523,11 @@ testing action="ps" service="":
             ;;
     esac
 
-# Start a local Keycloak + Mailpit from the production image and realm template; pass the app URL.
+# Start the local Keycloak + Mailpit testing services and configure them for an app URL.
 keycloak-local app_url="http://localhost:3000":
-    docker compose -f deploy/keycloak/compose.local.yaml up -d --build
+    docker compose -f local/docker-compose.testing.yml up -d --build mailpit keycloak
     scripts/keycloak/local_setup.sh {{quote(app_url)}}
 
-# Stop and remove the local Keycloak and Mailpit, including their local data.
+# Stop and remove only the local Keycloak and Mailpit (other testing services keep running).
 keycloak-local-down:
-    docker compose -f deploy/keycloak/compose.local.yaml down
+    docker compose -f local/docker-compose.testing.yml rm --stop --force keycloak mailpit

@@ -230,14 +230,14 @@ Develop against a local Keycloak, never against a shared realm:
 
 ```bash
 just keycloak-local http://localhost:3000   # app URL; defaults to http://localhost:3000
-just keycloak-local-down                    # stop and remove local containers and data
+just keycloak-local-down                    # remove only these two containers and their data
 ```
 
-`compose.local.yaml` builds the same image and imports the same `realm/realm.json`
-as realm `dewell-local`, next to a Mailpit inbox (`http://127.0.0.1:18025/`) that
-receives every email code. Keycloak shares Mailpit's network namespace, so no
-Docker network is created. `scripts/keycloak/local_setup.sh` then points SMTP at
-Mailpit, applies `user-profile.json`, registers the bind actions and creates a
+The `keycloak` and `mailpit` services in `local/docker-compose.testing.yml` (the
+local testing stack, project `zata-ops`) build the same image and import the same
+`realm/realm.json` as realm `dewell-local`, next to a Mailpit inbox
+(`http://127.0.0.1:8025/`) that receives every email code; both bind to loopback
+only. `scripts/keycloak/local_setup.sh` then points SMTP at Mailpit, applies `user-profile.json`, registers the bind actions and creates a
 `freshai` client for the app URL, and prints the `USER_OIDC_*` values to use.
 The admin account (`admin`/`admin`) and client secret are fixed development
 values bound to `127.0.0.1`; SMS is not configured locally, so use email codes.

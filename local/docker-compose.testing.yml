@@ -20,6 +20,7 @@
 #   RAGFLOW_BASE_URL=http://localhost:9380
 #   RAGFLOW_API_KEY=test-ragflow-key
 #   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces
+#   USER_OIDC_ISSUER=http://127.0.0.1:18280/realms/dewell-local（其余 USER_OIDC_* 由 just keycloak-local 打印）
 #
 # MinIO 启动后需手动创建 bucket（Console: http://localhost:9001，minioadmin/minioadmin）
 # Jaeger Web UI: http://localhost:16686（Run / agent tracing 的本地 OTLP 接收端）
@@ -225,6 +226,42 @@ services:
       # 同时接内部网络（收沙箱流量）与默认网络（出站到放行域名）。
       - sandbox-egress
       - default
+
+  # ---------------------------------------------------------------------------
+  # Keycloak + Mailpit — 共享登录（与线上同镜像、同 realm 模板）
+  # ---------------------------------------------------------------------------
+  # 由 `just keycloak-local` 构建、启动并初始化（SMTP、User Profile、绑定操作、
+  # 本地应用 client），初始化脚本见 scripts/keycloak/local_setup.sh。
+  # 管理员 admin/admin 与 OTP HMAC 均为固定开发值，因此只绑定回环地址。
+  # Admin Console: http://127.0.0.1:18280/admin/   验证码收件箱: http://127.0.0.1:8025/
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: test-mailpit
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  keycloak:
+    build:
+      context: ../deploy/keycloak
+    image: zata-ops-keycloak:local
+    container_name: test-keycloak
+    command: ["start-dev", "--import-realm"]
+    depends_on:
+      - mailpit
+    ports:
+      - "127.0.0.1:18280:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_REALM: dewell-local
+      KC_REALM_DISPLAY_NAME: dewell local
+      KC_SPI_ADMIN__ALLOWED_SYSTEM_VARIABLES: KC_REALM,KC_REALM_DISPLAY_NAME
+      KC_SHARED_OTP_HMAC_SECRET: local-dev-only-otp-hmac-secret-0123456789
+    volumes:
+      - ../deploy/keycloak/realm/realm.json:/opt/keycloak/data/import/dewell-local-realm.json:ro
+      - ../deploy/keycloak/realm/user-profile.json:/opt/keycloak/data/user-profile.json:ro
+    restart: unless-stopped
 
 volumes:
   minio-test-data:

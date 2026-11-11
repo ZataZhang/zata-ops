@@ -7,8 +7,8 @@ APP_URL="${1:-http://localhost:3000}"
 APP_URL="${APP_URL%/}"
 REALM="dewell-local"
 CLIENT_SECRET="freshai-local-dev-secret"
-KC_PORT="${KC_LOCAL_PORT:-18280}"
-COMPOSE=(docker compose -f deploy/keycloak/compose.local.yaml)
+KC_PORT=18280
+COMPOSE=(docker compose -f local/docker-compose.testing.yml)
 kc() { "${COMPOSE[@]}" exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@"; }
 
 echo "Waiting for Keycloak on 127.0.0.1:${KC_PORT} ..."
@@ -16,7 +16,7 @@ curl -sf -o /dev/null --retry 90 --retry-delay 2 --retry-all-errors --max-time 5
   "http://127.0.0.1:${KC_PORT}/realms/${REALM}/.well-known/openid-configuration"
 
 kc config credentials --server http://127.0.0.1:8080 --realm master --user admin --password admin >/dev/null
-echo '{"smtpServer":{"host":"localhost","port":"1025","from":"noreply@example.com","fromDisplayName":"Local Keycloak","auth":"false","ssl":"false","starttls":"false"}}' \
+echo '{"smtpServer":{"host":"mailpit","port":"1025","from":"noreply@example.com","fromDisplayName":"Local Keycloak","auth":"false","ssl":"false","starttls":"false"}}' \
   | kc update "realms/${REALM}" -f -
 kc update users/profile -r "${REALM}" -f /opt/keycloak/data/user-profile.json
 for action in shared-bind-email shared-bind-phone; do
@@ -44,7 +44,7 @@ fi
 cat <<INFO
 Local Keycloak is ready.
   Admin console : http://127.0.0.1:${KC_PORT}/admin/  (admin / admin)
-  Mail inbox    : http://127.0.0.1:${KC_LOCAL_MAIL_PORT:-18025}/
+  Mail inbox    : http://127.0.0.1:8025/
   FreshAI .env  :
     USER_OIDC_ENABLED=true
     USER_OIDC_ISSUER=http://127.0.0.1:${KC_PORT}/realms/${REALM}
