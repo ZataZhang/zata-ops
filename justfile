@@ -531,3 +531,15 @@ keycloak-local app_url="http://localhost:3000":
 # Stop and remove only the local Keycloak and Mailpit (other testing services keep running).
 keycloak-local-down:
     docker compose -f local/docker-compose.testing.yml rm --stop --force keycloak mailpit
+
+# Back up the production Keycloak database to config/private/backups via an SSH tunnel.
+keycloak-backup server:
+    uv run python scripts/keycloak/backup_local.py {{quote(server)}}
+
+# Restore a local backup (latest by default) into a temporary database and open Adminer.
+db-backup-view prefix="keycloak" *args:
+    uv run python scripts/diagnostics/backup_view.py up {{quote(prefix)}} {{args}}
+
+# Drop the temporary backup-view database and its placeholder roles.
+db-backup-view-down prefix="keycloak":
+    uv run python scripts/diagnostics/backup_view.py down {{quote(prefix)}}

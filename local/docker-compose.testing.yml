@@ -263,6 +263,21 @@ services:
       - ../deploy/keycloak/realm/user-profile.json:/opt/keycloak/data/user-profile.json:ro
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Adminer — 浏览本地测试库与备份恢复出的临时库
+  # ---------------------------------------------------------------------------
+  # 系统默认是 MySQL；查看 PostgreSQL 时用预填链接，例如
+  # http://127.0.0.1:8081/?pgsql=test-postgres&username=testuser&db=testdb
+  # 备份查看：`just db-backup-view` 恢复后会打印对应链接。只绑定回环地址。
+  adminer:
+    image: adminer:4.8.1
+    container_name: test-adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: test-postgres
+    ports:
+      - "127.0.0.1:8081:8080"
+    restart: unless-stopped
+
 volumes:
   minio-test-data:
   postgres-test-data:

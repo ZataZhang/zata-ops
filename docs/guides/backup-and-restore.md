@@ -36,6 +36,29 @@ zata-ops db list --local-dir /mnt/data/backups
 本地目录与数据库在同一台机器上时，它防误删和改坏，防不了整机故障；需要异地副本时再配置 S3。
 备份包含数据库全部内容，目录权限应只允许运维账号读取。
 
+## Keycloak 备份到本机、查看与恢复演练
+
+Keycloak 数据库只绑定在服务器回环地址。备份在本机完成，服务器上不安装任何东西：
+
+```bash
+just keycloak-backup <server>   # servers.toml 中运行 Keycloak 的服务器名
+just db-backup-view              # 最新一份恢复到本地临时库，并打印 Adminer 链接
+just db-backup-view-down         # 删除临时库与占位角色
+```
+
+- `keycloak-backup` 按服务器清单开 SSH 隧道（本机 15432 → 服务器 127.0.0.1:15432），
+  注入私有凭据 `KEYCLOAK_DATABASE_URL`（指向隧道端口）执行全量备份，写入
+  `config/private/backups/keycloak/`，保留 30 天，结束时无论成败都关闭隧道，并把备份收紧为仅当前用户可读。
+- 本机需要 PostgreSQL 客户端：`brew install libpq`（只装客户端，脚本自动使用其路径）。
+- `db-backup-view` 用 `zata-ops db restore --local-dir` 恢复到本地测试 Postgres 的
+  `<前缀>_backup_view` 库，每次查看同时是一次恢复演练；dump 中 `OWNER TO` 引用的线上角色会建成
+  NOLOGIN 占位角色，`down` 时一并删除。`--from <时间>` 查看指定备份，前缀参数可用于其他项目的本地备份。
+- Adminer 是本地测试中间件的一员（`http://127.0.0.1:8081/`），只绑定回环地址；
+  登录页默认系统是 MySQL，使用命令打印的预填链接即可直接进入 PostgreSQL。
+
+备份包含全部账号、密码哈希与各类 client secret，只放在开启磁盘加密的机器上，
+不要复制到聊天、工单或共享盘；本机备份防误删和改坏，防不了这台电脑丢失，需要异地副本时再配置 S3。
+
 ## Restore
 
 ```bash

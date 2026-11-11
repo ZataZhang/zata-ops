@@ -203,15 +203,13 @@ a separate client.
 PostgreSQL holds every account. Back it up more often than application
 databases and rehearse a restore before onboarding real users.
 
-```bash
-zata-ops db backup --project keycloak \
-  --db-url "postgresql://keycloak:<password>@127.0.0.1:15432/keycloak" --dry-run
-```
-
-The command uploads to the S3 bucket configured in the zata-ops `.env`; check
-the `--dry-run` preview (bucket, keys, retention) before running it for real.
-Run it on the server, or locally through
-`ssh -N -L 15432:127.0.0.1:15432 root@<server>`.
+From the zata-ops checkout, `just keycloak-backup <server>` opens an SSH tunnel
+to the loopback database port, runs `zata-ops db backup --local-dir` into
+`config/private/backups/keycloak/`, and closes the tunnel; nothing is installed
+on the server. `just db-backup-view` restores the latest backup into a local
+temporary database for browsing in Adminer, which doubles as a restore drill.
+See `docs/guides/backup-and-restore.md` for details. Add an S3 destination
+(`S3_ENDPOINT` and credentials) when an offsite copy is needed.
 
 Restore rehearsal: restore the dump into a new volume (change `KC_DB_VOLUME`),
 start the stack, and confirm that users and client logins still work. The
