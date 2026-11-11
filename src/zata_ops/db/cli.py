@@ -19,6 +19,7 @@ from rich.table import Table
 
 from zata_ops.config import OpsSettings, load_settings
 from zata_ops.db import _backup_impl, _restore_impl
+from zata_ops.db._local_store import LocalBackupStore
 from zata_ops.db._migrate_cli import _register_migrate_command
 from zata_ops.db._role_cli import register_role_commands
 from zata_ops.db._s3 import S3Client, build_backup_plan
@@ -66,6 +67,9 @@ def backup_command(
     full_backup_day: Optional[int] = typer.Option(
         None, help="ISO weekday for full backups (Monday=0)."
     ),
+    local_dir: Optional[str] = typer.Option(
+        None, help="Local backup directory (overrides BACKUP_LOCAL_DIR)."
+    ),
     force_full: bool = typer.Option(
         False,
         "--force-full",
@@ -75,8 +79,10 @@ def backup_command(
         False, "--dry-run", help="Print the planned S3 keys and exit; no network calls."
     ),
 ) -> None:
-    """Back up the database, logs, and resources to S3.
+    """Back up the database, logs, and resources to S3 and/or a local directory.
 
+    With ``--local-dir`` (or ``BACKUP_LOCAL_DIR``) every backup is also kept
+    locally; without an S3 endpoint the local directory is the only target.
     Loads defaults from the project's ``.env`` (or ``.env.local``) and lets
     each flag override an individual field. Use ``--dry-run`` to preview the
     plan without making any network calls — this is the recommended path for
@@ -106,6 +112,7 @@ def backup_command(
         if full_backup_day is not None
         else project_settings.full_backup_day
     )
+    effective_local_dir = _resolve(local_dir, project_settings.backup_local_dir)
 
     if dry_run:
         plan_now_dt = datetime.now(timezone.utc)
@@ -123,6 +130,14 @@ def backup_command(
             include_resources=Path(effective_resources_dir).exists()
             and any(Path(effective_resources_dir).iterdir()),
         )
+        dry_run_plan["destinations"] = [
+            destination
+            for destination, enabled in (
+                (f"local:{effective_local_dir}", bool(effective_local_dir)),
+                (f"s3:{effective_s3_bucket}", bool(effective_s3_endpoint)),
+            )
+            if enabled
+        ]
         dry_run_plan["bucket"] = effective_s3_bucket
         dry_run_plan["retention_days"] = effective_retention_days
         dry_run_plan["addressing_style"] = effective_s3_addressing_style
@@ -146,15 +161,20 @@ def backup_command(
         retention_days=effective_retention_days,
         full_backup_day=effective_full_backup_day,
         force_full=force_full,
+        local_dir=effective_local_dir,
     )
-    backup_run_result = _backup_impl.run_backup(backup_options)
+    try:
+        backup_run_result = _backup_impl.run_backup(backup_options)
+    except ValueError as backup_config_exc:
+        console.print(f"[red]{backup_config_exc}[/red]")
+        raise typer.Exit(code=1)
 
     console.print(
         f"[green]Backup {backup_run_result.timestamp} "
         f"({backup_run_result.backup_type}) complete[/green]"
     )
     for uploaded_key in backup_run_result.uploaded_keys:
-        console.print(f"  uploaded: {uploaded_key}")
+        console.print(f"  stored: {uploaded_key}")
     if backup_run_result.deleted_old_objects:
         console.print(
             f"  pruned: {backup_run_result.deleted_old_objects} old object(s)"
@@ -202,9 +222,12 @@ def restore_command(
     verify_table: list[str] = typer.Option(
         [], "--verify-table", help="Require this table to exist with >0 rows."
     ),
+    local_dir: Optional[str] = typer.Option(
+        None, help="Local backup directory (overrides BACKUP_LOCAL_DIR)."
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
 ) -> None:
-    """Restore a backup from S3.
+    """Restore a backup from S3, or from a local directory with ``--local-dir``.
 
     Supports database / logs / resources restore, optional chain restore for
     incremental backups, and explicit destructive-operation flags. Pass
@@ -232,6 +255,7 @@ def restore_command(
         drop_target_db=drop_target_db,
         sanitize_invalid_utf8=sanitize_invalid_utf8,
         verify_tables=list(verify_table),
+        local_dir=_resolve(local_dir, project_settings.backup_local_dir),
     )
 
     if not yes:
@@ -275,19 +299,28 @@ def list_command(
     s3_secret_key: Optional[str] = typer.Option(None),
     s3_prefix: Optional[str] = typer.Option(None),
     s3_addressing_style: Optional[str] = typer.Option(None),
+    local_dir: Optional[str] = typer.Option(
+        None, help="Local backup directory (overrides BACKUP_LOCAL_DIR)."
+    ),
 ) -> None:
-    """List available backup dates and types from S3."""
+    """List available backup dates and types from S3 or a local directory."""
     project_settings = _settings_or_die()
-    s3_client = S3Client(
-        endpoint=_resolve(s3_endpoint, project_settings.s3_endpoint),
-        access_key=_resolve(s3_access_key, project_settings.s3_access_key),
-        secret_key=_resolve(s3_secret_key, project_settings.s3_secret_key),
-        bucket=_resolve(s3_bucket, project_settings.s3_bucket),
-        prefix=_resolve(s3_prefix, project_settings.s3_prefix),
-        addressing_style=_resolve(
-            s3_addressing_style, project_settings.s3_addressing_style
-        ),
-    )
+    effective_local_dir = _resolve(local_dir, project_settings.backup_local_dir)
+    if effective_local_dir:
+        s3_client = LocalBackupStore(
+            effective_local_dir, _resolve(s3_prefix, project_settings.s3_prefix)
+        )
+    else:
+        s3_client = S3Client(
+            endpoint=_resolve(s3_endpoint, project_settings.s3_endpoint),
+            access_key=_resolve(s3_access_key, project_settings.s3_access_key),
+            secret_key=_resolve(s3_secret_key, project_settings.s3_secret_key),
+            bucket=_resolve(s3_bucket, project_settings.s3_bucket),
+            prefix=_resolve(s3_prefix, project_settings.s3_prefix),
+            addressing_style=_resolve(
+                s3_addressing_style, project_settings.s3_addressing_style
+            ),
+        )
 
     available_backup_dates = s3_client.list_backup_dates()
     if not available_backup_dates:

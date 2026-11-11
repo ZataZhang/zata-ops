@@ -1,4 +1,4 @@
-"""Pure backup workflow: dump DB, archive logs/resources, upload, prune.
+"""Pure backup workflow: dump DB, archive logs/resources, store, prune.
 
 Splits the orchestration out of the typer wrapper so the same code can be
 exercised by tests and by a future external scheduler. Side effects are
@@ -16,6 +16,7 @@ from typing import Any
 
 from zata_ops.db._archive import archive_directory
 from zata_ops.db._database import backup_database
+from zata_ops.db._local_store import FanoutBackupStore, LocalBackupStore
 from zata_ops.db._s3 import S3Client
 
 
@@ -38,6 +39,8 @@ class BackupRunOptions:
         retention_days: Retention window for pruning old S3 backups.
         full_backup_day: ISO weekday for full backups (Monday=0).
         force_full: If True, treat this run as a full backup regardless of day.
+        local_dir: Local directory that keeps a copy of every backup; with no
+            S3 endpoint configured it is the only destination.
     """
 
     project: str
@@ -54,6 +57,7 @@ class BackupRunOptions:
     retention_days: int
     full_backup_day: int
     force_full: bool = False
+    local_dir: str = ""
 
 
 @dataclass
@@ -64,8 +68,8 @@ class BackupRunResult:
         timestamp: Backup timestamp in ``YYYY-MM-DD_HHMMSS`` UTC.
         backup_type: ``full`` or ``incremental``.
         manifest: Manifest dictionary that was (or would be) uploaded.
-        uploaded_keys: S3 keys actually uploaded.
-        deleted_old_objects: Number of old S3 objects pruned by retention.
+        uploaded_keys: Backup keys actually stored (S3 and/or local directory).
+        deleted_old_objects: Number of old objects or files pruned by retention.
         errors: Mapping from logical filename to error message, if any.
     """
 
@@ -128,18 +132,19 @@ def run_backup(
         now: Reference datetime (UTC). Defaults to ``datetime.now(timezone.utc)``.
 
     Returns:
-        :class:`BackupRunResult` describing what was uploaded.
+        :class:`BackupRunResult` describing what was stored.
 
     Raises:
-        ValueError: If required configuration values are missing.
+        ValueError: If required configuration values are missing or no
+            destination (S3 endpoint or local directory) is configured.
     """
     if not options.database_url:
         raise ValueError("database_url is required")
-    if not options.s3_endpoint:
-        raise ValueError("s3_endpoint is required")
-    if not options.s3_access_key:
+    if not options.s3_endpoint and not options.local_dir:
+        raise ValueError("configure an S3 endpoint or a local backup directory")
+    if options.s3_endpoint and not options.s3_access_key:
         raise ValueError("s3_access_key is required")
-    if not options.s3_secret_key:
+    if options.s3_endpoint and not options.s3_secret_key:
         raise ValueError("s3_secret_key is required")
 
     effective_now_dt = now or datetime.now(timezone.utc)
@@ -158,14 +163,21 @@ def run_backup(
         "files": [],
     }
 
-    s3_client = s3_client_factory(
-        endpoint=options.s3_endpoint,
-        access_key=options.s3_access_key,
-        secret_key=options.s3_secret_key,
-        bucket=options.s3_bucket,
-        prefix=options.s3_prefix,
-        addressing_style=options.s3_addressing_style,
-    )
+    backup_stores: list = []
+    if options.local_dir:
+        backup_stores.append(LocalBackupStore(options.local_dir, options.s3_prefix))
+    if options.s3_endpoint:
+        backup_stores.append(
+            s3_client_factory(
+                endpoint=options.s3_endpoint,
+                access_key=options.s3_access_key,
+                secret_key=options.s3_secret_key,
+                bucket=options.s3_bucket,
+                prefix=options.s3_prefix,
+                addressing_style=options.s3_addressing_style,
+            )
+        )
+    backup_store = FanoutBackupStore(backup_stores)
 
     backup_run_result = BackupRunResult(
         timestamp=backup_timestamp,
@@ -179,7 +191,7 @@ def run_backup(
         db_s3_key = (
             f"{options.s3_prefix}/{backup_timestamp}/{backup_type_str}/database.sql.gz"
         )
-        s3_client.upload_file(db_dump_output_path, db_s3_key)
+        backup_store.upload_file(db_dump_output_path, db_s3_key)
         backup_manifest["files"].append(
             {
                 "name": "database.sql.gz",
@@ -202,7 +214,7 @@ def run_backup(
         options=options,
         backup_timestamp=backup_timestamp,
         backup_type_str=backup_type_str,
-        s3_client=s3_client,
+        s3_client=backup_store,
         result=backup_run_result,
         manifest=backup_manifest,
     )
@@ -215,7 +227,7 @@ def run_backup(
         options=options,
         backup_timestamp=backup_timestamp,
         backup_type_str=backup_type_str,
-        s3_client=s3_client,
+        s3_client=backup_store,
         result=backup_run_result,
         manifest=backup_manifest,
     )
@@ -223,13 +235,13 @@ def run_backup(
     manifest_s3_key = (
         f"{options.s3_prefix}/{backup_timestamp}/{backup_type_str}/manifest.json"
     )
-    s3_client.upload_json(backup_manifest, manifest_s3_key)
+    backup_store.upload_json(backup_manifest, manifest_s3_key)
     backup_run_result.uploaded_keys.append(manifest_s3_key)
 
     shutil.rmtree(backup_work_dir, ignore_errors=True)
 
     try:
-        backup_run_result.deleted_old_objects = s3_client.cleanup_old_backups(
+        backup_run_result.deleted_old_objects = backup_store.cleanup_old_backups(
             options.s3_prefix, options.retention_days
         )
     except Exception as retention_exc:
@@ -248,7 +260,7 @@ def _archive_and_upload(
     options: BackupRunOptions,
     backup_timestamp: str,
     backup_type_str: str,
-    s3_client: S3Client,
+    s3_client: S3Client | FanoutBackupStore,
     result: BackupRunResult,
     manifest: dict[str, Any],
 ) -> None:

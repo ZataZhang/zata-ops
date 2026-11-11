@@ -18,6 +18,7 @@ from zata_ops.db._database import (
     get_table_row_count,
     restore_database,
 )
+from zata_ops.db._local_store import LocalBackupStore
 from zata_ops.db._s3 import (
     S3Client,
     find_full_backup_before,
@@ -48,6 +49,7 @@ class RestoreRunOptions:
         drop_target_db: Drop+recreate the target database first.
         sanitize_invalid_utf8: Replace invalid UTF-8 bytes before piping to psql.
         verify_tables: Tables that must exist with >0 rows after restore.
+        local_dir: Read backups from this local directory instead of S3.
     """
 
     target_date: str
@@ -68,6 +70,7 @@ class RestoreRunOptions:
     drop_target_db: bool = False
     sanitize_invalid_utf8: bool = False
     verify_tables: list[str] = field(default_factory=list)
+    local_dir: str = ""
 
 
 @dataclass
@@ -123,18 +126,22 @@ def run_restore(
     if not selected_restore_targets:
         raise ValueError("at least one restore target must be selected")
 
-    s3_client = s3_client_factory(
-        endpoint=options.s3_endpoint,
-        access_key=options.s3_access_key,
-        secret_key=options.s3_secret_key,
-        bucket=options.s3_bucket,
-        prefix=options.s3_prefix,
-        addressing_style=options.s3_addressing_style,
-    )
+    if options.local_dir:
+        s3_client = LocalBackupStore(options.local_dir, options.s3_prefix)
+    else:
+        s3_client = s3_client_factory(
+            endpoint=options.s3_endpoint,
+            access_key=options.s3_access_key,
+            secret_key=options.s3_secret_key,
+            bucket=options.s3_bucket,
+            prefix=options.s3_prefix,
+            addressing_style=options.s3_addressing_style,
+        )
 
     available_backup_dates = s3_client.list_backup_dates()
     if options.target_date not in available_backup_dates:
-        raise ValueError(f"backup {options.target_date} not found in S3")
+        source_label = options.local_dir or "S3"
+        raise ValueError(f"backup {options.target_date} not found in {source_label}")
 
     target_manifest = s3_client.get_backup_manifest(options.target_date)
     if not target_manifest:
@@ -212,7 +219,7 @@ def run_restore(
 
 def _apply_single_restore(
     *,
-    s3_client: S3Client,
+    s3_client: S3Client | LocalBackupStore,
     target_manifest: dict,
     backup_type_str: str,
     options: RestoreRunOptions,
@@ -253,7 +260,7 @@ def _apply_single_restore(
 
 def _apply_restore_chain(
     *,
-    s3_client: S3Client,
+    s3_client: S3Client | LocalBackupStore,
     available_dates: list[str],
     target_date: str,
     options: RestoreRunOptions,

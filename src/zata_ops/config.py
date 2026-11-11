@@ -37,7 +37,9 @@ class OpsSettings(BaseSettings):
         logs_dir: Local directory containing application logs to archive.
         resources_dir: Local directory containing application resources to archive.
         work_dir: Local scratch directory for staging backup artifacts.
-        retention_days: How many days of backups to retain in S3.
+        retention_days: How many days of backups to retain (S3 and local).
+        backup_local_dir: Local directory that keeps a copy of every backup;
+            the only destination when no S3 endpoint is configured.
     """
 
     project: str = "app"
@@ -54,6 +56,7 @@ class OpsSettings(BaseSettings):
     resources_dir: str = "/app/backend/data"
     work_dir: str = "/tmp/backups"
     retention_days: int = 30
+    backup_local_dir: str = ""
 
     model_config = SettingsConfigDict(
         env_file=(".env", ".env.local"),

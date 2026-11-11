@@ -16,6 +16,26 @@
 `--dry-run` 在 `_run_backup` 触发任何 IO 之前打印计划，并 mask `DATABASE_URL`
 中的密码。CI 推荐用 `--dry-run` 走真实入口验证。
 
+## 备份到本地目录
+
+`--local-dir`（或 `.env` 中的 `BACKUP_LOCAL_DIR`）让每次备份在本地目录也保存一份，
+目录结构与 S3 key 一致：`<local-dir>/<S3_PREFIX>/<YYYY-MM-DD_HHMMSS>/<full|incremental>/`，
+manifest 格式不变。
+
+- 只配置本地目录、不配置 `S3_ENDPOINT`：本地是唯一目的地，不需要任何 S3 凭据。
+- 两者都配置：同一份备份同时写入本地与 S3，适合「服务器硬盘保留近期、对象存储保留更久」。
+- `RETENTION_DAYS` 同样作用于本地目录，按备份目录名中的时间判断，复制或移动目录不会重置保留期。
+- `zata-ops db list --local-dir <目录>` 与 `zata-ops db restore --local-dir <目录> --from <时间>`
+  直接读取本地备份，不访问 S3。
+
+```bash
+zata-ops db backup --project keycloak --local-dir /mnt/data/backups --force-full
+zata-ops db list --local-dir /mnt/data/backups
+```
+
+本地目录与数据库在同一台机器上时，它防误删和改坏，防不了整机故障；需要异地副本时再配置 S3。
+备份包含数据库全部内容，目录权限应只允许运维账号读取。
+
 ## Restore
 
 ```bash
