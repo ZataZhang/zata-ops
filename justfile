@@ -6,6 +6,8 @@
 # project-specific commands below; same-name recipes here override shared ones.
 # ───────────────────────────────────────────────────────────────────────────────
 
+set allow-duplicate-recipes
+
 import 'justfile.shared'
 
 # Validate private operational inventory without connecting to servers.
@@ -543,3 +545,34 @@ db-backup-view prefix="keycloak" *args:
 # Drop the temporary backup-view database and its placeholder roles.
 db-backup-view-down prefix="keycloak":
     uv run python scripts/diagnostics/backup_view.py down {{quote(prefix)}}
+
+# Read Nacos dotenv keys or inject selected values without displaying them.
+[positional-arguments]
+nacos-env *args:
+    uv run python scripts/diagnostics/nacos_env.py "$@"
+
+# 本地覆盖：只暂存部分文件时，标记按暂存树计算，与 check-test-flag 的判定口径一致。
+test type="local":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ./scripts/shared/hooks/quality_flag.sh
+
+    git_dir="$(quality_git_dir)"
+    flag_file="$git_dir/.last_tested_commit"
+    branch_name="$(quality_branch_name)"
+    head_hash="$(quality_head_hash)"
+    if [ -n "$(quality_staged_file_paths)" ]; then
+        test_tree="$(quality_effective_tree staged test)"
+    else
+        test_tree="$(quality_effective_tree working test)"
+    fi
+
+    if quality_flag_matches "$flag_file" "$branch_name" "$head_hash" "$test_tree"; then
+        echo "✅ just test flag valid: $branch_name @ ${head_hash:0:8}; skipping tests."
+        exit 0
+    fi
+
+    SKIP=check-test-flag just lint --full
+    uv run pytest tests -q
+    quality_write_flag "$flag_file" "$branch_name" "$head_hash" "$test_tree"
+    echo "✅ just test flag updated: $branch_name @ ${head_hash:0:8}"
