@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -89,23 +90,59 @@ def run_with_credentials(
         OSError: Process cannot start or credentials cannot be read.
     """
     credentials = dotenv_values(secret_path, interpolate=False, encoding="utf-8")
+    if any(not credentials.get(reference) for reference in bindings.values()):
+        raise ValueError("missing credential")
+    return run_with_environment(
+        {name: credentials[reference] for name, reference in bindings.items()},
+        command,
+        ExecutionOptions(working_directory, show_redacted_output),
+    )
+
+
+@dataclass(frozen=True)
+class ExecutionOptions:
+    """Control the child working directory and optional literal output redaction."""
+
+    working_directory: Path | None = None
+    show_redacted_output: bool = False
+
+
+def run_with_environment(
+    selected_environment: dict[str, str],
+    command: list[str],
+    options: ExecutionOptions,
+) -> int:
+    """Execute a command with selected values and controlled output.
+
+    Args:
+        selected_environment: Validated destination names and literal values.
+        command: Argument vector, executed without a shell.
+        options: Working directory and output policy.
+
+    Returns:
+        Child exit code, or one for signal termination.
+
+    Raises:
+        ValueError: Invalid environment, directory, command or redaction length.
+        OSError: Child cannot start.
+    """
     if not command or any(
-        not SECRET_NAME.fullmatch(name) or not credentials.get(reference)
-        for name, reference in bindings.items()
+        not SECRET_NAME.fullmatch(name) or "\x00" in value
+        for name, value in selected_environment.items()
     ):
-        raise ValueError("missing command or credential")
+        raise ValueError("invalid command or environment")
+    working_directory = options.working_directory
+    show_redacted_output = options.show_redacted_output
     if working_directory is not None and not working_directory.is_dir():
         raise ValueError("working directory does not exist")
-    injected_values = [credentials[reference] for reference in bindings.values()]
+    injected_values = list(selected_environment.values())
     if show_redacted_output and any(
         len(injected_value) < MIN_REDACTABLE_LENGTH
         for injected_value in injected_values
     ):
         raise ValueError("credential too short to redact")
     process_environment = os.environ.copy()
-    process_environment.update(
-        {name: credentials[reference] for name, reference in bindings.items()}
-    )
+    process_environment.update(selected_environment)
     if not show_redacted_output:
         completed = subprocess.run(
             command,
