@@ -23,6 +23,16 @@ API key 是管理员凭据，不能给前端、模型、沙箱或不可信用户
 
 **内部 Docker bridge 不等于完整隔离。** `--network=sandbox` 让 gVisor 使用自己的网络栈，但 Docker bridge 上的路由仍可能允许访问同网容器或宿主 bridge 地址；loopback 绑定也不能证明同机容器都无法触达控制面。完成宿主、元数据、私网、跨沙箱和资源配额测试前，只运行固定 smoke 任务，不开放任意代码执行。公网或多租户服务需要另行设计授权、租户网络、资源准入和网络策略。
 
+## 出网控制与调用方契约
+
+本部署的沙箱断网由服务端网络本身保证：`zata-ops-sandbox-isolated` 是带 `--internal` 创建的 Docker bridge（`scripts/opensandbox/runtime.py`），安装器与预检强制 `Internal=true`（`runtime.py`、`prepare.py`、`install.py`），internal 网络没有出网路由。这是本部署唯一的出网控制层，不依赖 OpenSandbox 的 networkPolicy；它只保证无出网路由，不等于上节所述的完整隔离。
+
+- **调用方不要发送 networkPolicy。** OpenSandbox 1.1.1 在 gVisor 运行时下拒绝任何 networkPolicy（egress sidecar 依赖 gVisor netstack 不支持的 iptables nat 表，见服务端 `services/validators.py::ensure_egress_runtime_compatible`）；自定义网络下同样拒绝。FreshAI 的对应配置是 `[sandbox.opensandbox] egress_enforcement = "server_network"`（规定见 FreshAI 仓库 `docs/guides/sandbox-providers.md`「OpenSandbox 出网控制」），该值只能用于服务端确为 internal 网络的部署；其默认值 `network_policy` 不适用于本部署。
+- **不得为启用 networkPolicy 削弱隔离。** 不把本网络改成可出网的普通 bridge，不去掉 gVisor 或 `--network=sandbox`。需要可出网的通用沙箱时另起独立实例（独立网络或主机），不要改动本实例的隔离姿态。
+- **开放任意代码执行的前置条件不变。** 完成宿主、元数据、私网、跨沙箱和资源配额隔离测试前，只运行固定 smoke 任务；接入方（如 FreshAI 的 sandbox-agent）在此之前不对外开放。
+
+（2026-11-12 与 FreshAI 侧共同确认并实测：internal 网络下沙箱出网被拒；背景见 `dewell-ai-assistant-team/freshai` 的 Issue #41 与 PR #46。）
+
 ## 生成本机私有配置
 
 先备份现有本机运维配置。新建配置必须位于被 Git 忽略的 `config/private/` 下。生成器创建 256 位 API key，不打印 key，也不会覆盖已有目录。
