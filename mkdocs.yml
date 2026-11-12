@@ -43,7 +43,10 @@ nav:
       - 备份、恢复与迁移: guides/backup-and-restore.md
       - 调度示例: guides/scheduling.md
       - VPS 初始化: guides/vps-provisioning.md
+      - 自动部署迁移与任务排空: guides/deployment-migration.md
+      - Swarm 入口与算力分离: guides/swarm-production.md
       - Nacos 开发与远程部署准备: guides/nacos.md
+      - Nacos dotenv 安全使用: guides/nacos-env.md
       - Keycloak 统一身份中心: guides/keycloak.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md
