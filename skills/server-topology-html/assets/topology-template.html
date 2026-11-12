@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>服务器关系图 · &lt;DATE&gt;</title>
+<style>
+  :root{
+    --bg:#f3f5f9; --card:#ffffff; --ink:#0b1526; --muted:#5b6b82; --line:#dbe2ec;
+    --entry:#2563eb; --compute:#d97706; --app:#0d9488; --dead:#94a3b8; --risk:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1340px;margin:0 auto;padding:40px 26px 64px}
+  .eyebrow{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:#7c8aa0;font-weight:600}
+  h1{font-size:32px;line-height:1.15;margin:9px 0 12px;letter-spacing:-.015em}
+  .sub{color:var(--muted);font-size:13px;line-height:1.75;max-width:940px}
+  .sub code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+    background:#eef2f8;border:1px solid #e2e8f2;border-radius:4px;padding:1px 5px}
+  .warn{display:inline-flex;gap:7px;align-items:center;margin-top:15px;padding:6px 12px;border-radius:999px;
+    background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:11.5px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:26px 0 0}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat b{display:block;font-size:25px;letter-spacing:-.025em;line-height:1.2}
+  .stat span{font-size:11.5px;color:var(--muted)}
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 10px}
+  .toolbar .label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8494a8;font-weight:600;margin-right:4px}
+  .filters button{font:inherit;font-size:12px;color:#475569;background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:6px 14px;cursor:pointer;transition:all .18s}
+  .filters button:hover{border-color:#b9c6d8;color:#0f172a}
+  .filters button.on{background:#0f172a;border-color:#0f172a;color:#fff}
+  .hint{font-size:11.5px;color:#94a3b8;margin-left:auto}
+  .figure{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px;margin-top:12px;
+    box-shadow:0 1px 2px rgba(15,23,42,.04),0 18px 50px -30px rgba(15,23,42,.3);overflow-x:auto}
+  svg{display:block;width:100%;height:auto;min-width:1180px}
+  g.panel{transition:opacity .28s ease}
+  g.panel.dim{opacity:.1}
+  g.panel:hover .frame{stroke:#9fb0c6}
+  h2{font-size:17px;margin:44px 0 14px;letter-spacing:.005em}
+  h2 small{font-weight:400;color:var(--muted);font-size:12px;margin-left:9px}
+  table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#6b7a90;
+    background:#f8fafc;padding:11px 14px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:12px 14px;border-bottom:1px solid #eef2f7;vertical-align:top;line-height:1.55}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover td{background:#fbfcfe}
+  td.ip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:nowrap}
+  .tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .t-live{background:#ecfdf5;color:#047857}
+  .t-dead{background:#f1f5f9;color:#64748b}
+  .t-idle{background:#eff6ff;color:#1d4ed8}
+  .t-risk{background:#fef2f2;color:#b91c1c}
+  .rel{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .rel-item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .rel-item b{display:block;font-size:12.5px;margin-bottom:5px}
+  .rel-item p{margin:0;font-size:12px;color:var(--muted);line-height:1.7}
+  .rel-item code{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f6f8fb;
+    border:1px solid #e6ebf2;border-radius:4px;padding:1px 4px}
+  .notes{background:#fff;border:1px solid var(--line);border-left:3px solid var(--compute);
+    border-radius:10px;padding:15px 18px;font-size:12.5px;line-height:1.9;color:#334155}
+  .notes b{color:#0f172a}
+  footer{margin-top:38px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:#8494a8;line-height:1.75}
+  @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}.rel{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">ZATA OPS · PRIVATE INVENTORY</div>
+  <h1>服务器关系图</h1>
+  <div class="sub">
+    依据 <code>config/private/servers.toml</code>（&lt;N&gt; 台，updated_at &lt;DATE&gt;）。
+    按业务簇分组；<b>箭头只画跨机关系</b>，簇内的方框表示同一台主机上的部署。
+  </div>
+  <div class="warn">⚠ 本页含真实 IP，仅本机临时查看；不要提交仓库或外发。</div>
+
+  <div class="stats">
+    <div class="stat"><b>&lt;N&gt;</b><span>台已登记服务器</span></div>
+    <div class="stat"><b>&lt;E&gt;</b><span>个在线 HTTP 入口</span></div>
+    <div class="stat"><b>&lt;R&gt;</b><span>条跨机关系</span></div>
+    <div class="stat"><b>&lt;X&gt;</b><span>台停用 / 空机</span></div>
+  </div>
+
+  <div class="toolbar">
+    <span class="label">筛选</span>
+    <div class="filters" id="filters">
+      <button data-filter="all" class="on">全部</button>
+      <button data-filter="prod">生产</button>
+      <button data-filter="staging">Staging</button>
+      <button data-filter="lifecycle">停用 / 空机</button>
+    </div>
+    <span class="hint">悬停主机可看备注</span>
+  </div>
+
+  <div class="figure">
+    <svg viewBox="0 40 1280 744" role="img" aria-label="服务器关系总览图">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+        </marker>
+        <marker id="ar-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+        </marker>
+        <marker id="ar-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+        </marker>
+        <marker id="ar-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+        </marker>
+        <marker id="ar-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+        </marker>
+      </defs>
+
+      <!-- 面板 A：入口 / 算力分离。出口依赖必须挂在入口（NAT）正下方。 -->
+      <g class="panel" data-group="prod">
+        <rect class="frame" x="24" y="64" width="620" height="300" rx="14" fill="#ffffff" stroke="#dbe2ec"/>
+        <rect x="24" y="64" width="620" height="4" rx="2" fill="#d97706" opacity=".75"/>
+        <text x="44" y="93" font-size="14" font-weight="700" fill="#0f172a">① &lt;CLUSTER_TITLE&gt;</text>
+        <text x="44" y="112" font-size="10.5" fill="#7c8aa0">&lt;DOMAIN&gt; · &lt;LINK_NOTE&gt;</text>
+
+        <g>
+          <title>公网用户</title>
+          <rect x="48" y="152" width="132" height="54" rx="9" fill="#f1f5f9" stroke="#cbd5e1" stroke-dasharray="4 3"/>
+          <text x="114" y="174" font-size="12" text-anchor="middle" fill="#334155">公网用户</text>
+          <text x="114" y="191" font-size="9.5" text-anchor="middle" fill="#7c8aa0">HTTPS 443</text>
+        </g>
+        <line x1="182" y1="179" x2="228" y2="179" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/>
+
+        <g>
+          <title>&lt;ENTRY_IP&gt;：入口 / 网关</title>
+          <rect x="232" y="140" width="150" height="78" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+          <text x="307" y="163" font-size="12.5" font-weight="600" text-anchor="middle" fill="#1e3a8a" font-family="ui-monospace,Menlo,monospace">&lt;ENTRY_IP&gt;</text>
+          <text x="307" y="180" font-size="9.5" text-anchor="middle" fill="#2563eb">ENTRY · manager</text>
+          <text x="307" y="197" font-size="9.5" text-anchor="middle" fill="#5b6b82">&lt;ENTRY_ROLE&gt;</text>
+        </g>
+
+        <g>
+          <title>&lt;COMPUTE_IP&gt;：计算节点，不发布宿主端口</title>
+          <rect x="452" y="140" width="148" height="78" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+          <text x="526" y="163" font-size="12.5" font-weight="600" text-anchor="middle" fill="#78350f" font-family="ui-monospace,Menlo,monospace">&lt;COMPUTE_IP&gt;</text>
+          <text x="526" y="180" font-size="9.5" text-anchor="middle" fill="#b45309">COMPUTE · worker</text>
+          <text x="526" y="196" font-size="9.2" text-anchor="middle" fill="#5b6b82">&lt;APP_NAME&gt;</text>
+          <text x="526" y="209" font-size="9.2" text-anchor="middle" fill="#5b6b82">&lt;APP_NAME&gt;</text>
+        </g>
+
+        <!-- 入站与出向必须分成两条平行箭头 -->
+        <line x1="384" y1="162" x2="448" y2="162" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ar-blue)"/>
+        <line x1="448" y1="196" x2="384" y2="196" stroke="#d97706" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#ar-amber)"/>
+        <text x="416" y="154" font-size="9" text-anchor="middle" fill="#2563eb">overlay 入站</text>
+        <text x="416" y="212" font-size="9" text-anchor="middle" fill="#b45309">隧道出向</text>
+
+        <!-- 出口依赖挂在入口下方，而不是计算节点下方 -->
+        <g>
+          <title>外部依赖按入口的出口 IP 做白名单</title>
+          <rect x="232" y="262" width="150" height="56" rx="9" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="4 3"/>
+          <text x="307" y="283" font-size="10.5" text-anchor="middle" fill="#334155">&lt;EXTERNAL_SERVICE&gt;</text>
+          <text x="307" y="299" font-size="9" text-anchor="middle" fill="#7c8aa0">白名单 = 入口出口 IP</text>
+        </g>
+        <line x1="307" y1="220" x2="307" y2="258" stroke="#64748b" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        <text x="315" y="243" font-size="8.8" fill="#7c8aa0">出口经入口 NAT</text>
+        <text x="452" y="246" font-size="9" fill="#7c8aa0">容器不直接出公网</text>
+        <text x="452" y="261" font-size="9" fill="#7c8aa0">出向统一回入口再 NAT</text>
+
+        <text x="44" y="346" font-size="9.5" fill="#9a6b12">硬约束：计算节点不发布宿主端口，入站只走 overlay。</text>
+      </g>
+
+      <!-- 面板 B：共享基础设施 -->
+      <g class="panel" data-group="prod">
+        <rect class="frame" x="662" y="64" width="300" height="300" rx="14" fill="#ffffff" stroke="#dbe2ec"/>
+        <rect x="662" y="64" width="300" height="4" rx="2" fill="#0d9488" opacity=".75"/>
+        <text x="682" y="93" font-size="13.5" font-weight="700" fill="#0f172a">② &lt;CLUSTER_TITLE&gt;</text>
+        <text x="682" y="111" font-size="10.5" fill="#7c8aa0">&lt;SHARED_NOTE&gt;</text>
+
+        <g>
+          <title>&lt;PUBLIC_IP&gt;：共享主机</title>
+          <rect x="682" y="124" width="260" height="58" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+          <text x="812" y="147" font-size="12" font-weight="600" text-anchor="middle" fill="#115e59" font-family="ui-monospace,Menlo,monospace">&lt;PUBLIC_IP&gt; · &lt;PRIVATE_IP&gt;</text>
+          <text x="812" y="166" font-size="9.5" text-anchor="middle" fill="#0f766e">&lt;HOST_SPEC&gt;</text>
+        </g>
+
+        <g font-size="10" fill="#334155">
+          <rect x="682" y="196" width="124" height="30" rx="7" fill="#ffffff" stroke="#cbd5e1"/><text x="744" y="215" text-anchor="middle">Traefik 入口</text>
+          <rect x="818" y="196" width="124" height="30" rx="7" fill="#ffffff" stroke="#cbd5e1"/><text x="880" y="215" text-anchor="middle">&lt;APP_NAME&gt;</text>
+          <rect x="682" y="234" width="124" height="30" rx="7" fill="#ffffff" stroke="#cbd5e1"/><text x="744" y="253" text-anchor="middle">&lt;APP_NAME&gt;</text>
+          <rect x="818" y="234" width="124" height="30" rx="7" fill="#ffffff" stroke="#cbd5e1"/><text x="880" y="253" text-anchor="middle">&lt;APP_NAME&gt;</text>
+          <rect x="682" y="272" width="124" height="30" rx="7" fill="#ffffff" stroke="#cbd5e1"/><text x="744" y="291" text-anchor="middle">&lt;APP_NAME&gt;</text>
+          <rect x="818" y="272" width="124" height="30" rx="7" fill="#ffffff" stroke="#cbd5e1"/><text x="880" y="291" text-anchor="middle">&lt;APP_NAME&gt;</text>
+        </g>
+        <text x="682" y="327" font-size="9.2" fill="#7c8aa0">&lt;DOMAIN&gt; · &lt;DOMAIN&gt;</text>
+        <text x="682" y="342" font-size="9.2" fill="#7c8aa0">&lt;NOTE&gt;</text>
+        <text x="682" y="357" font-size="9" fill="#94a3b8">&lt;RISK_NOTE&gt;</text>
+      </g>
+
+      <!--
+        其余面板按 18px 间距复制：
+        面板 C: x=980 y=64  w=276 h=300
+        面板 D: x=24  y=388 w=400 h=300
+        面板 E: x=442 y=388 w=470 h=300
+        面板 F: x=930 y=388 w=326 h=300
+        每个面板必须带 data-group="prod|staging|lifecycle"。
+      -->
+      <rect x="980" y="64" width="276" height="300" rx="14" fill="#fbfcfe" stroke="#dbe2ec" stroke-dasharray="6 5"/>
+      <text x="1118" y="220" font-size="11" text-anchor="middle" fill="#a8b4c4">面板 C</text>
+      <rect x="24" y="388" width="1232" height="300" rx="14" fill="#fbfcfe" stroke="#dbe2ec" stroke-dasharray="6 5"/>
+      <text x="640" y="546" font-size="11" text-anchor="middle" fill="#a8b4c4">第二行：按业务簇复制面板 D / E / F</text>
+
+      <!-- 图例只放一份 -->
+      <line x1="24" y1="708" x2="1256" y2="708" stroke="#e6ebf2"/>
+      <g font-size="10.5" fill="#5b6b82">
+        <rect x="28" y="722" width="10" height="10" rx="3" fill="#eff6ff" stroke="#2563eb"/><text x="44" y="731">入口 / 网关</text>
+        <rect x="146" y="722" width="10" height="10" rx="3" fill="#fffbeb" stroke="#d97706"/><text x="162" y="731">计算节点（worker）</text>
+        <rect x="330" y="722" width="10" height="10" rx="3" fill="#f0fdfa" stroke="#0d9488"/><text x="346" y="731">应用主机</text>
+        <rect x="430" y="722" width="10" height="10" rx="3" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="3 2"/><text x="446" y="731">已停用 / 空机</text>
+        <line x1="570" y1="727" x2="596" y2="727" stroke="#64748b" stroke-width="1.4" marker-end="url(#ar)"/><text x="602" y="731">在线链路</text>
+        <line x1="686" y1="727" x2="712" y2="727" stroke="#d97706" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-amber)"/><text x="718" y="731">隧道 / 迁移 / 外部依赖</text>
+        <line x1="882" y1="727" x2="908" y2="727" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-red)"/><text x="914" y="731">风险链路</text>
+      </g>
+      <text x="1256" y="762" font-size="9.5" text-anchor="end" fill="#94a3b8">&lt;N&gt; 台服务器 · &lt;R&gt; 条跨机关系 · 数据时点 &lt;DATE&gt;</text>
+    </svg>
+  </div>
+
+  <h2>逐台清单 <small>按业务角色排序</small></h2>
+  <table>
+    <thead>
+      <tr><th>服务器</th><th>地域</th><th>角色</th><th>承载 / 域名</th><th>与其他机器的关系</th><th>状态</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="ip">&lt;ENTRY_IP&gt;</td>
+        <td>&lt;REGION&gt;</td>
+        <td>&lt;ROLE&gt;</td>
+        <td>&lt;APPS_AND_DOMAINS&gt;</td>
+        <td>&lt;RELATION&gt;</td>
+        <td><span class="tag t-live">活跃</span></td>
+      </tr>
+      <tr>
+        <td class="ip">&lt;COMPUTE_IP&gt;</td>
+        <td>&lt;REGION&gt;</td>
+        <td>&lt;ROLE&gt;</td>
+        <td>&lt;APPS_AND_DOMAINS&gt;</td>
+        <td>&lt;RELATION&gt;</td>
+        <td><span class="tag t-live">活跃</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>跨机关系 <small>只有 &lt;R&gt; 条，其他都是单机内部署</small></h2>
+  <div class="rel">
+    <div class="rel-item">
+      <b>① &lt;ENTRY_IP&gt; → &lt;COMPUTE_IP&gt;：overlay 入站</b>
+      <p>&lt;DESCRIPTION&gt;</p>
+    </div>
+    <div class="rel-item">
+      <b>② &lt;COMPUTE_IP&gt; → &lt;ENTRY_IP&gt;：隧道出向 + NAT</b>
+      <p>&lt;DESCRIPTION&gt;</p>
+    </div>
+  </div>
+
+  <h2>值得注意</h2>
+  <div class="notes">
+    <b>1. &lt;RISK_TITLE&gt;</b>&lt;RISK_TEXT&gt;<br>
+    <b>2. &lt;RISK_TITLE&gt;</b>&lt;RISK_TEXT&gt;
+  </div>
+
+  <footer>
+    临时文件：/tmp/server-topology-&lt;DATE&gt;.html · 不进入仓库 · 真实值以 config/private/servers.toml 为准<br>
+    生成时间 &lt;DATE&gt; · 关系基于清单记录，未做本轮实时连通性探测。
+  </footer>
+</div>
+<script>
+  (function () {
+    var buttons = Array.prototype.slice.call(document.querySelectorAll('#filters button'));
+    var panels = Array.prototype.slice.call(document.querySelectorAll('g.panel'));
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        buttons.forEach(function (b) { b.classList.toggle('on', b === btn); });
+        var filter = btn.dataset.filter;
+        panels.forEach(function (p) {
+          p.classList.toggle('dim', filter !== 'all' && p.dataset.group !== filter);
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

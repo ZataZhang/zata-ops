@@ -28,7 +28,7 @@ zata-ops --version
 
 需要 SSH 远程操作 VPS 或使用 `tunnel` 时，确保本机安装并配置了系统 `ssh` 命令。
 
-仓库内的 [zata-ops 运维 Skill](skills/zata-ops-operations/SKILL.md) 可按任务引导使用隧道、数据库、日志及 VPS 命令。
+仓库内的 [zata-ops 运维 Skill](skills/zata-ops-operations/SKILL.md) 可按任务引导使用隧道、数据库、日志及 VPS 命令；[服务器拓扑 Skill](skills/server-topology-html/SKILL.md) 可把私有清单画成单文件 HTML 关系图。
 
 升级到新版本:
 
