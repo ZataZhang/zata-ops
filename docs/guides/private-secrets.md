@@ -155,3 +155,7 @@ uv run python scripts/diagnostics/private_secrets.py run \
 `config/private/backups/` 下，不会被私有配置归档重复打包。
 压缩包**未加密**，手动复制时也要按凭据文件保管，放到自己信任的加密存储位置。
 备份、提醒与恢复方式见[私有运维配置](private-inventory.md)。
+
+## Nacos 配置来源
+
+远端 text 配置按 dotenv 解析后，可复用同一注入执行机制。见 [Nacos dotenv 安全使用](nacos-env.md)。

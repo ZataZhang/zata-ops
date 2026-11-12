@@ -22,6 +22,7 @@ just inventory-check
 跨机器交接时通过团队的安全渠道单独传递真实配置，并将密钥路径调整为接收者的本机路径。
 Git clone 不会带上真实配置。
 数据库及其他服务的 URL、账号和密码管理见[服务与凭据管理](private-secrets.md)。
+迁移 GitHub 部署目标、专用部署用户与后台任务发布时，参考[自动部署迁移与任务排空](deployment-migration.md)。
 
 ## 新服务器接入与状态记录
 
