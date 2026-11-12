@@ -16,6 +16,13 @@ logs/
 /src/zata_ops/logs/**/__pycache__/
 # Local operational inventory and private configuration
 /config/private/
+
+# The logs package is tracked; its compiled cache is not
+/src/zata_ops/logs/__pycache__/
+
+# Local session dumps / screenshot transcripts (may contain private infrastructure details)
+/*-image-*.txt
+/*-transcript-*.txt
 *.log
 *.env
 npm-debug.log*
