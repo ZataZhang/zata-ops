@@ -198,6 +198,16 @@ repository. Local callback testing also requires the local callback to be
 explicitly added to the client's redirect allowlist. Keep `freshai-admin` as
 a separate client.
 
+For the FreshAI admin console, create the `freshai-admin` confidential client
+in the Admin Console with the generic client settings (standard flow, PKCE
+S256, exact redirect URI = `ADMIN_OIDC_CALLBACK_URI`). It carries no roles:
+Keycloak only proves who the person is. FreshAI signs in only an existing,
+active admin account. The first sign-in binds the account when the token's
+verified email matches exactly one unbound admin. Later sign-ins match by
+`(iss, sub)`. FreshAI never creates or enables admins from Keycloak. Put the
+generated secret only in the FreshAI backend environment as
+`ADMIN_OIDC_CLIENT_SECRET`.
+
 ## Backup and restore
 
 PostgreSQL holds every account. Back it up more often than application
