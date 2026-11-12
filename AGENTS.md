@@ -11,6 +11,19 @@
 
 然后根据任务类型按需补读下表对应的页面，**不要无差别地一次性读完所有标准页**。
 
+## 公开仓库的隐私边界
+
+本仓库是**公开仓库**，任何被 git 跟踪的文件都会对所有人可见。
+
+- 真实 IP、域名、主机名、实例/资源 ID、内网网段、VPC/交换机/安全组 ID、账号与用户名、
+  密钥路径、端口、服务器规格与内存容量，**不得出现在被跟踪的文件里**。
+- 私有资料只放 `config/private/`（已在 `.gitignore`），引用入口是
+  `docs/guides/private-inventory.md` 与 `docs/guides/private-secrets.md`。
+- 任务、计划、复盘、PRD 与文档正文用占位符描述拓扑（如 `<ENTRY_NODE>`、`<APP_DOMAIN>`），
+  需要真实值时写"见私有清单"，不要就地复制。
+- 临时导出、截图转写、会话记录不要放进仓库目录；确需暂存时先加进 `.gitignore`。
+- 提交前自查 `git diff --cached` 与 `git status`，确认没有真实标识和临时转储文件。
+
 ## When To Read Which Standard
 
 | 标准页 | 何时必须读 | 何时可以跳过 |
@@ -38,10 +51,14 @@
 - OpenSandbox 等已部署服务的访问地址：运行 `just private-config-show`，在对应服务器的应用清单里找 `url` 字段；先完整看一遍该应用记录，不要只按关键词过滤输出。
 - 密码与 Token 保存在 `config/private/secrets.env`。不要直接读取或打印该文件；按指南将凭据注入可信命令。列表与详情只显示凭据是否已配置，不显示密码。
 
+涉及 Swarm 的入口/算力分离、隧道出口、换算力节点或入口节点时，先读
+`docs/guides/swarm-production.md`。
+
 `just service-*` 是现有管理入口，`zata-ops --help` 目前没有统一的私有资产管理命令。清单描述登记信息；用户询问服务此刻是否可用时，需要另做实时检查并说明核验时间。
 
 ## Critical Summary
 
+- 本仓库是公开仓库：被跟踪文件不得包含真实 IP、域名、账号、凭据或云资源 ID，私有值只写进 `config/private/`
 - 后端必须遵守四层依赖方向：
   `src/backend/api/ -> src/backend/core/ -> src/backend/engines/ -> src/backend/infrastructure/`
 - Python 项目优先使用 `uv` 和 `just`
