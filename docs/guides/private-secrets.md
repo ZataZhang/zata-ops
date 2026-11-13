@@ -85,6 +85,15 @@ just secret-set MAIN_POSTGRES_PASSWORD
 trusted-secret-source | uv run python scripts/diagnostics/private_secrets.py set MAIN_POSTGRES_PASSWORD --stdin
 ```
 
+需要新建随机密码时，直接生成并保存，值不显示：
+
+```bash
+just secret-generate MAIN_POSTGRES_PASSWORD      # openssl rand -hex 24，48 位十六进制
+just secret-generate MAIN_POSTGRES_PASSWORD 32   # 指定随机字节数
+```
+
+同名凭据已存在时会被覆盖（覆盖前自动备份），只对尚未在远端使用的名称执行。
+
 其中 `trusted-secret-source` 是占位命令，需要换成自己的凭据来源；不要用包含真实密码的
 `echo`、命令行参数、聊天消息或工具调用文本。Agent 应让用户本机执行隐藏输入命令。
 没有交互终端时默认输入失败，不会退回明文回显。

@@ -44,6 +44,10 @@ private-config-show:
 secret-set name:
     uv run python scripts/diagnostics/private_secrets.py set {{quote(name)}}
 
+# Store a random password (openssl rand) without displaying it.
+secret-generate name bytes="24":
+    openssl rand -hex {{quote(bytes)}} | uv run python scripts/diagnostics/private_secrets.py set {{quote(name)}} --stdin
+
 # Show credential names only.
 secret-list:
     uv run python scripts/diagnostics/private_secrets.py list
