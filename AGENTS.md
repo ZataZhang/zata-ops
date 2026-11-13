@@ -36,7 +36,7 @@
 | `docs/ai-standards/comments-docstrings.md` | 新增/修改公共 Python API；写模块/类/函数 docstring；做文件 I/O 涉及编码问题 | 仅改私有实现细节且不涉及公共 docstring 时 |
 | `docs/ai-standards/documentation.md` | 改动公共函数签名、配置项、业务流程；新增长期文档页；更新 `mkdocs.yml` 导航；依赖可能变化的上游知识或线上环境现状 | 纯内部重构且无对外行为或文档变化 |
 | `docs/ai-standards/testing.md` | 准备验证策略；改动 API/CLI/前端流程/后台任务/持久化/启动或部署；写 PRD 的 Realistic Validation Plan | 仅改注释或纯文档排版 |
-| `docs/ai-standards/tooling.md` | 选择运行命令；改 `justfile` / `pre-commit` / `mkdocs` / Docker 配置；处理 PRD 归档流程；处理 lint flag 或重复检测 hooks | 在已熟悉常用 `just` 命令、且本次不动工具链配置时 |
+| `docs/ai-standards/tooling.md` | 选择运行命令；改 `justfile` / `pre-commit` / `mkdocs` / Docker 配置；处理 PRD 归档流程；处理 lint flag 或重复检测 hooks；清理本地 Git 分支 | 在已熟悉常用 `just` 命令、且本次不动工具链配置时 |
 
 `tests/playwright-e2e/` 是独立 TypeScript/Node 包，遵循该目录自己的 `README.md`，不强制套用 Python 规范。
 
@@ -67,6 +67,7 @@
 - 变量命名必须具有来源、类型或状态语义，避免 `data`、`item`、`res`
 - 新增或修改代码前先搜索现有实现；禁止复制粘贴后微调，参数超过 4 个时收敛到对象
 - 除非用户明确要求，否则不要自动执行 `git add`、`git commit`、`git push` 等 Git 变更操作
+- 收尾时及时删除已确认合并或过期且没有未合并工作的本地分支；squash/rebase merge 不能只靠提交祖先关系判断，细则见 `docs/ai-standards/tooling.md`。不要自动删除远端分支
 - 单代码文件非空行不超过 1000 行；`just lint` 会对此发出警告
 - PRD 对应任务全部完成后：将已完成项打勾，所有 Acceptance Checklist 条目达到完成态后，再将 PRD 从 `tasks/pending/` 归档到 `tasks/archive/`
 - PRD 必须包含 Realistic Validation Plan，验收清单需覆盖最高可行保真度的真实入口验证，或说明无可执行行为变更
