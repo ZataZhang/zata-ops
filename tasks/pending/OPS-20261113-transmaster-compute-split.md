@@ -1,6 +1,6 @@
 # TransMaster 迁移：计算与服务端分离（出口与入站保留在入口节点）
 
-状态：已执行（2026-11-13 完成切换，待补 CD 变量与发布脚本修正）
+状态：已执行（2026-11-13 完成切换；2026-11-16 已随业务仓库 PR 补齐发布脚本与健康探针并发布生产）
 说明：本页是公开仓库内的任务记录，**不写真实主机地址、域名、网段、仓库地址与规格**。
 真实值统一查 `config/private/`（已 gitignore）与 `docs/guides/private-inventory.md`。
 
@@ -158,5 +158,47 @@ GitHub CD 入口。
 ## 9. 待办
 
 - [x] 调度约束改为节点标签 `node.labels.app.transmaster==true`（服务器模板、当前 release、业务仓库默认值已同步）
-- [x] 修 `deploy_nacos.py`：改为集群任务状态 + 一次性容器执行 Celery 控制（业务仓库改动，待提交后随发布包生效）
+- [x] 修 `deploy_nacos.py`：改为集群任务状态 + 一次性容器执行 Celery 控制（业务仓库改动，已随 2026-11-16 发布上线）
 - [ ] 观察计算节点内存 3 天
+
+## 10. 2026-11-16 生产发布：worker 健康探针与运行时策略加固
+
+业务仓库合并「worker 健康检查改为进程存活探针」后打标签发布，走 GitHub CD 的 `production`
+路径在 manager 上执行发布脚本，整条链路成功。
+
+### 本次上线的变更
+
+| 项 | 发布前 | 发布后 |
+|---|---|---|
+| worker 容器探针 | `celery ... inspect ping -t 5`（实测单次 4.8–11.2s） | 读 `/proc/1/cmdline` 判定 celery worker 进程存活（实测 80–85ms） |
+| beat 容器探针 | 同上 | 读 `/proc/1/cmdline` 判定 celery beat 进程存活 |
+| worker 更新/回滚顺序 | start-first（模板漂移） | stop-first |
+| 四个服务重启预算 | 10 次 / 120s | 30 次 / 300s |
+| 后端事件总线 Redis 客户端 | 同步、无 socket 超时 | `socket_connect_timeout=1.0`、`socket_timeout=2.0` |
+| 限流中间件 | 每请求 2–4 次同步 Redis 往返 | 合并为 1 次 pipeline |
+
+换成进程存活判定的原因是：`concurrency=1` 的 worker 在长任务占满唯一子进程时
+`inspect ping` 会超时并报 "No nodes replied within time constraint"，健康容器被 Docker 判死
+并以 137 杀死，正在执行的翻译任务被打断。
+
+发布脚本现在会把上述运行时策略强制写入目标栈，服务器模板里的旧值会被覆盖，
+部署日志以 `Runtime policy drift corrected: ...` 列出被纠正的字段。
+
+### 核验结果（2026-11-16 00:46–01:00 CST）
+
+- 发布日志顺序：`Runtime policy drift corrected` → `Stack validated; target images available`
+  → `Worker inspection ready; busy=0` → `Waiting for acknowledged tasks: 0`
+  → `Production deployment verified`。
+- 四个服务各 1 个 Running 任务，容器 healthy；Beat 单实例；`celery inspect ping` 返回 pong。
+- 活容器内执行新探针：退出码 0，耗时 80–85ms；非 celery 容器退出码 1（负向对照）。
+- 公网 `<APP_DOMAIN>`：`/health`、首页、`/docs`、`/openapi.json` 均 200，
+  `/health` 响应体携带本次发布 commit。
+- 后端近 20 分钟日志：36 次 200、1 次 404、0 次 5xx，无异常堆栈。
+- 容器资源占用在限额内，计算节点无 OOM 记录、磁盘余量充足；发布后无新增 137 与 exit 2 任务。
+
+### 遗留
+
+- [ ] 观察 24 小时无新增 137，确认探针误杀未再发生
+- [ ] 观察后端无新增 5xx 与事件循环冻结，验证 Redis 超时改动
+- [ ] 大 PDF（500+ 页）仍请求内同步处理，待异步化
+- [ ] 业务仓库本地开发 compose 仍用旧 `inspect ping`，不在发布路径，待清理
