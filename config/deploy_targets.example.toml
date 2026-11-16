@@ -1,0 +1,19 @@
+# 部署 target 示例。
+# 复制到 config/private/deploy_targets.toml 后填入真实值；该私有文件已被 .gitignore 忽略。
+# 这里只保留占位符，不要把真实域名、仓库或环境写进被跟踪的文件。
+
+[[targets]]
+name = "app-staging"
+repo = "your-org/your-repo"
+workflow = "cd.yml"
+environment = "staging"
+dispatch_ref = "main"
+
+[[targets]]
+name = "app-production"
+repo = "your-org/your-repo"
+workflow = "cd.yml"
+environment = "production"
+dispatch_ref = "main"
+health_url = "https://<APP_DOMAIN>/health"
+production = true

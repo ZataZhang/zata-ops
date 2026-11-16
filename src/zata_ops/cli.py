@@ -13,6 +13,7 @@ import typer
 from zata_ops import __version__
 from zata_ops.app import cli as application_cli
 from zata_ops.db import cli as db_cli
+from zata_ops.deploy import cli as deploy_cli
 from zata_ops.env import cli as env_cli
 from zata_ops.logs import cli as logs_cli
 from zata_ops.observability import cli as observability_cli
@@ -35,6 +36,11 @@ app.add_typer(
 
 app.add_typer(
     db_cli.app, name="db", help="Database backup, restore, list, migrate, check."
+)
+app.add_typer(
+    deploy_cli.app,
+    name="deploy",
+    help="Inspect GitHub deployment events and trigger rollbacks.",
 )
 app.add_typer(env_cli.app, name="env", help="VPS environment provisioning and fixes.")
 app.add_typer(logs_cli.app, name="logs", help="Tail and search container/system logs.")

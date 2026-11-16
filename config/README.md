@@ -7,10 +7,12 @@ config/
 ├── README.md                  # 配置入口说明，可提交
 ├── servers.example.toml       # 虚构服务器示例，可提交
 ├── services.example.toml      # 虚构服务示例，可提交
+├── deploy_targets.example.toml # 虚构部署 target 示例，可提交
 ├── secrets.env.example        # 虚构凭据格式示例，可提交
 └── private/                   # 真实配置，整个目录被 Git 忽略
     ├── servers.toml           # 服务器、SSH 引用和应用部署清单
     ├── services.toml          # 服务地址、用户名、用途及凭据引用
+    ├── deploy_targets.toml    # 部署 target：仓库、环境、健康检查地址
     ├── secrets.env            # 密码、Token 和带凭据的连接串
     ├── backups/               # 最近 20 份本机备份
     └── .copy-reminder         # 用户手动复制配置的确认时间
