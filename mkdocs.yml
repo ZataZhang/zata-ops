@@ -44,6 +44,7 @@ nav:
       - 调度示例: guides/scheduling.md
       - VPS 初始化: guides/vps-provisioning.md
       - 自动部署迁移与任务排空: guides/deployment-migration.md
+      - 部署事件与回滚: guides/deploy-ops.md
       - Swarm 入口与算力分离: guides/swarm-production.md
       - Nacos 开发与远程部署准备: guides/nacos.md
       - Nacos dotenv 安全使用: guides/nacos-env.md

@@ -28,7 +28,7 @@ zata-ops --version
 
 需要 SSH 远程操作 VPS 或使用 `tunnel` 时，确保本机安装并配置了系统 `ssh` 命令。
 
-仓库内的 [zata-ops 运维 Skill](skills/zata-ops-operations/SKILL.md) 可按任务引导使用隧道、数据库、日志及 VPS 命令；[服务器拓扑 Skill](skills/server-topology-html/SKILL.md) 可把私有清单画成单文件 HTML 关系图。
+仓库内的 [zata-ops 运维 Skill](skills/zata-ops-operations/SKILL.md) 可按任务引导使用隧道、数据库、日志及 VPS 命令；[部署 Skill](skills/agent-deploy/SKILL.md) 负责部署查看与回滚的 plan/apply/verify 流程；[服务器拓扑 Skill](skills/server-topology-html/SKILL.md) 可把私有清单画成单文件 HTML 关系图。
 
 升级到新版本:
 
@@ -151,6 +151,27 @@ zata-ops logs tail --unit my-app.service --since 1h
 # 在最近 24 小时的日志里搜索字面文本
 zata-ops logs search "ERROR" --project my-app --dry-run
 ```
+
+### 部署事件与回滚 `deploy`
+
+部署目标配置在 `config/private/deploy_targets.toml`（格式见
+`config/deploy_targets.example.toml`），命令以 GitHub 的 workflow run 与
+Environment deployment 记录为事实源。
+
+```bash
+# 当前线上版本、最近部署与最新 workflow run
+zata-ops deploy status --target prod --check-health
+
+# 部署事件列表
+zata-ops deploy history --target prod --limit 10
+
+# 回滚：先看计划，再确认执行
+zata-ops deploy rollback --target prod --to <sha>-production --dry-run
+zata-ops deploy rollback --target prod --to <sha>-production --confirm
+```
+
+所有命令支持 `--json`。退出码：0 成功、1 `gh` 失败、2 配置或参数错误、
+3 缺少 `--confirm`。详细说明见[部署事件与回滚](docs/guides/deploy-ops.md)。
 
 ### 终端状态面板 `dashboard`
 
