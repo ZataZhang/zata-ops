@@ -65,7 +65,9 @@
   footer{margin-top:38px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:#8494a8;line-height:1.75}
   @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}.rel{grid-template-columns:1fr}}
 </style>
-</head>
+<style>
+.topology-switch{display:flex;gap:8px;margin:22px 0 14px}.topology-switch button{padding:9px 17px;border:1px solid #dbe2ec;background:white;border-radius:9px;color:#475569;cursor:pointer;font:inherit;font-size:13px}.topology-switch button.active{background:#0f172a;color:white}.hosts-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.host-box{background:white;border:1px solid #dbe2ec;border-top:4px solid #2563eb;border-radius:14px;padding:19px;min-width:0}.host-caption,.host-ip{font-size:12px;line-height:1.8;color:#64748b;overflow-wrap:anywhere}.host-box h3{font-size:16px;overflow-wrap:anywhere}.host-tree{border-left:2px solid #cbd5e1;margin:16px 0 0 5px;padding-left:16px}.host-app{position:relative;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px}.host-app:before{content:'';position:absolute;width:16px;left:-18px;top:18px;border-top:2px solid #cbd5e1}.host-app strong{display:block;font-size:12px}.host-app span,.host-app p{display:block;font-size:11px;line-height:1.6;color:#64748b;overflow-wrap:anywhere}[hidden]{display:none!important}@media(max-width:900px){.hosts-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:580px){.hosts-grid{grid-template-columns:1fr}}
+</style></head>
 <body>
 <div class="wrap">
   <div class="eyebrow">ZATA OPS · PRIVATE INVENTORY</div>
@@ -83,6 +85,11 @@
     <div class="stat"><b>&lt;X&gt;</b><span>台停用 / 空机</span></div>
   </div>
 
+<nav class="topology-switch" aria-label="拓扑查看角度"><button type="button" class="active" data-topology-view="service" aria-pressed="true">按服务查看</button><button type="button" data-topology-view="host" aria-pressed="false">按服务器查看</button></nav>
+<section id="host-topology" hidden><p>每个框代表一台服务器；树形连线表示部署归属。外部托管服务不属于本机部署。</p><div class="hosts-grid">&lt;HOST_CARDS&gt;</div></section>
+<template id="host-deployment-card"><article class="host-box"><div class="host-caption">&lt;SERVER_REGION&gt;</div><h3>&lt;SERVER_NAME&gt;</h3><div class="host-ip">&lt;PUBLIC_IP&gt; / &lt;PRIVATE_IP&gt; · &lt;SERVER_SPEC&gt;</div><div class="host-tree">&lt;DEPLOYMENT_ROWS&gt;</div></article></template>
+<template id="host-deployment-row"><div class="host-app"><strong>&lt;APP_NAME&gt;</strong><span>&lt;DEPLOYMENT_TYPE&gt; · &lt;APP_PORTS&gt;</span><p>&lt;APP_PURPOSE&gt;</p></div></template>
+<section id="service-topology">
   <div class="figure">
     <svg viewBox="0 40 1280 934" role="img" aria-label="服务器关系总览图">
       <defs>
@@ -225,6 +232,7 @@
 </svg>
   </div>
 
+</section>
   <h2>逐台清单 <small>按业务角色排序</small></h2>
   <table>
     <thead>
@@ -274,5 +282,8 @@
   </footer>
 </div>
 
+<script>
+document.querySelectorAll('[data-topology-view]').forEach(button=>button.addEventListener('click',()=>{const hostView=button.dataset.topologyView==='host';document.querySelector('#host-topology').hidden=!hostView;document.querySelector('#service-topology').hidden=hostView;document.querySelectorAll('[data-topology-view]').forEach(candidate=>{const selected=candidate===button;candidate.classList.toggle('active',selected);candidate.setAttribute('aria-pressed',String(selected));});}));
+</script>
 </body>
 </html>
