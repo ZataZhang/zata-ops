@@ -83,19 +83,8 @@
     <div class="stat"><b>&lt;X&gt;</b><span>台停用 / 空机</span></div>
   </div>
 
-  <div class="toolbar">
-    <span class="label">筛选</span>
-    <div class="filters" id="filters">
-      <button data-filter="all" class="on">全部</button>
-      <button data-filter="prod">生产</button>
-      <button data-filter="staging">Staging</button>
-      <button data-filter="lifecycle">停用 / 空机</button>
-    </div>
-    <span class="hint">悬停主机可看备注</span>
-  </div>
-
   <div class="figure">
-    <svg viewBox="0 40 1280 744" role="img" aria-label="服务器关系总览图">
+    <svg viewBox="0 40 1280 934" role="img" aria-label="服务器关系总览图">
       <defs>
         <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
@@ -116,7 +105,7 @@
 
       <!-- 面板 A：入口 / 算力分离。出口依赖必须挂在入口（NAT）正下方。 -->
       <g class="panel" data-group="prod">
-        <rect class="frame" x="24" y="64" width="620" height="300" rx="14" fill="#ffffff" stroke="#dbe2ec"/>
+        <rect class="frame" x="24" y="64" width="620" height="490" rx="14" fill="#ffffff" stroke="#dbe2ec"/>
         <rect x="24" y="64" width="620" height="4" rx="2" fill="#d97706" opacity=".75"/>
         <text x="44" y="93" font-size="14" font-weight="700" fill="#0f172a">① &lt;CLUSTER_TITLE&gt;</text>
         <text x="44" y="112" font-size="10.5" fill="#7c8aa0">&lt;DOMAIN&gt; · &lt;LINK_NOTE&gt;</text>
@@ -152,24 +141,36 @@
         <text x="416" y="154" font-size="9" text-anchor="middle" fill="#2563eb">overlay 入站</text>
         <text x="416" y="212" font-size="9" text-anchor="middle" fill="#b45309">隧道出向</text>
 
-        <!-- 出口依赖挂在入口下方，而不是计算节点下方 -->
-        <g>
-          <title>外部依赖按入口的出口 IP 做白名单</title>
-          <rect x="232" y="262" width="150" height="56" rx="9" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="4 3"/>
-          <text x="307" y="283" font-size="10.5" text-anchor="middle" fill="#334155">&lt;EXTERNAL_SERVICE&gt;</text>
-          <text x="307" y="299" font-size="9" text-anchor="middle" fill="#7c8aa0">白名单 = 入口出口 IP</text>
+        <!-- 按实测出口选择源：经入口 NAT 用入口坐标；直接出网用计算节点坐标。
+             不把此示例连线当成真实结论。替换 DEP_SOURCE_X / DEP_SOURCE_Y。
+             外部依赖始终留在当前业务簇；完整 endpoint 放 title / 关系卡片。 -->
+        <g><title>&lt;RDS_ENDPOINT&gt; · &lt;RDS_EVIDENCE_UTC&gt;</title>
+          <rect x="232" y="280" width="370" height="60" rx="9" fill="#f0fdfa" stroke="#99d5cd"/>
+          <text x="244" y="298" font-size="11" fill="#115e59">&lt;RDS_NAME_PORT&gt;</text>
+          <text x="244" y="316" font-size="9" fill="#5b6b82">&lt;RDS_DATABASE_USER&gt;</text>
+          <text x="244" y="330" font-size="9" fill="#5b6b82">&lt;RDS_CHECK_STATUS&gt; · &lt;EGRESS_SOURCE&gt;</text>
         </g>
-        <line x1="307" y1="220" x2="307" y2="258" stroke="#64748b" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
-        <text x="315" y="243" font-size="8.8" fill="#7c8aa0">出口经入口 NAT</text>
-        <text x="452" y="246" font-size="9" fill="#7c8aa0">容器不直接出公网</text>
-        <text x="452" y="261" font-size="9" fill="#7c8aa0">出向统一回入口再 NAT</text>
+        <path data-edge="dependency-1" d="M&lt;DEP_SOURCE_X&gt; &lt;DEP_SOURCE_Y&gt; H630 V310 H606" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g><title>&lt;REDIS_ENDPOINT&gt; · &lt;REDIS_EVIDENCE_UTC&gt;</title>
+          <rect x="232" y="355" width="370" height="60" rx="9" fill="#f0fdfa" stroke="#99d5cd"/>
+          <text x="244" y="373" font-size="11" fill="#115e59">&lt;REDIS_NAME_PORT&gt;</text>
+          <text x="244" y="391" font-size="9" fill="#5b6b82">&lt;REDIS_DATABASE_USER&gt;</text>
+          <text x="244" y="405" font-size="9" fill="#5b6b82">&lt;REDIS_CHECK_STATUS&gt; · &lt;EGRESS_SOURCE&gt;</text>
+        </g>
+        <path data-edge="dependency-2" d="M&lt;DEP_SOURCE_X&gt; &lt;DEP_SOURCE_Y&gt; H630 V385 H606" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g><title>&lt;CONFIG_SERVICE_ENDPOINT&gt; · &lt;CONFIG_SERVICE_EVIDENCE_UTC&gt;</title>
+          <rect x="232" y="430" width="370" height="60" rx="9" fill="#f0fdfa" stroke="#99d5cd"/>
+          <text x="244" y="448" font-size="11" fill="#115e59">&lt;CONFIG_SERVICE_NAME_PORT&gt;</text>
+          <text x="244" y="466" font-size="9" fill="#5b6b82">&lt;CONFIG_SERVICE_DATABASE_USER&gt;</text>
+          <text x="244" y="480" font-size="9" fill="#5b6b82">&lt;CONFIG_SERVICE_CHECK_STATUS&gt; · &lt;EGRESS_SOURCE&gt;</text>
+        </g>
+        <path data-edge="dependency-3" d="M&lt;DEP_SOURCE_X&gt; &lt;DEP_SOURCE_Y&gt; H630 V460 H606" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#ar)"/>
 
-        <text x="44" y="346" font-size="9.5" fill="#9a6b12">硬约束：计算节点不发布宿主端口，入站只走 overlay。</text>
       </g>
 
       <!-- 面板 B：共享基础设施 -->
       <g class="panel" data-group="prod">
-        <rect class="frame" x="662" y="64" width="300" height="300" rx="14" fill="#ffffff" stroke="#dbe2ec"/>
+        <rect class="frame" x="662" y="64" width="300" height="490" rx="14" fill="#ffffff" stroke="#dbe2ec"/>
         <rect x="662" y="64" width="300" height="4" rx="2" fill="#0d9488" opacity=".75"/>
         <text x="682" y="93" font-size="13.5" font-weight="700" fill="#0f172a">② &lt;CLUSTER_TITLE&gt;</text>
         <text x="682" y="111" font-size="10.5" fill="#7c8aa0">&lt;SHARED_NOTE&gt;</text>
@@ -194,6 +195,7 @@
         <text x="682" y="357" font-size="9" fill="#94a3b8">&lt;RISK_NOTE&gt;</text>
       </g>
 
+      <g transform="translate(0 190)">
       <!--
         其余面板按 18px 间距复制：
         面板 C: x=980 y=64  w=276 h=300
@@ -219,7 +221,8 @@
         <line x1="882" y1="727" x2="908" y2="727" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-red)"/><text x="914" y="731">风险链路</text>
       </g>
       <text x="1256" y="762" font-size="9.5" text-anchor="end" fill="#94a3b8">&lt;N&gt; 台服务器 · &lt;R&gt; 条跨机关系 · 数据时点 &lt;DATE&gt;</text>
-    </svg>
+    </g>
+</svg>
   </div>
 
   <h2>逐台清单 <small>按业务角色排序</small></h2>
@@ -270,20 +273,6 @@
     生成时间 &lt;DATE&gt; · 关系基于清单记录，未做本轮实时连通性探测。
   </footer>
 </div>
-<script>
-  (function () {
-    var buttons = Array.prototype.slice.call(document.querySelectorAll('#filters button'));
-    var panels = Array.prototype.slice.call(document.querySelectorAll('g.panel'));
-    buttons.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        buttons.forEach(function (b) { b.classList.toggle('on', b === btn); });
-        var filter = btn.dataset.filter;
-        panels.forEach(function (p) {
-          p.classList.toggle('dim', filter !== 'all' && p.dataset.group !== filter);
-        });
-      });
-    });
-  })();
-</script>
+
 </body>
 </html>
