@@ -2,13 +2,64 @@
 
 from __future__ import annotations
 
+import io
 import os
+import subprocess
+from contextlib import contextmanager
 import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
 
-BACKUP_PATTERN = "private-*.tar.gz"
+BACKUP_PATTERN = "private-*.tar.gz.age"
+MAX_ENCRYPTED_PAYLOAD_BYTES = 512 * 1024 * 1024
 KEEP_BACKUPS = 20
+
+
+@contextmanager
+def open_backup_archive(archive_path: Path) -> Iterator[tarfile.TarFile]:
+    """Open an encrypted backup or a legacy gzip archive.
+
+    Args:
+        archive_path: Archive to authenticate, decrypt, and inspect.
+
+    Yields:
+        Readable tar archive with the existing restore validation applied later.
+
+    Raises:
+        OSError: The archive or age executable cannot be accessed.
+        ValueError: Decryption fails or the compressed payload exceeds the limit.
+        tarfile.TarError: The decrypted payload is not a gzip tar archive.
+    """
+    if archive_path.suffix != ".age":
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            yield archive
+        return
+    identity_path = Path(
+        os.environ.get("ZATA_BACKUP_IDENTITY", "~/.ssh/id_ed25519")
+    ).expanduser()
+    with subprocess.Popen(
+        ["age", "--decrypt", "-i", str(identity_path), str(archive_path.resolve())],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ) as decrypt_process:
+        assert decrypt_process.stdout is not None
+        try:
+            compressed_payload = decrypt_process.stdout.read(
+                MAX_ENCRYPTED_PAYLOAD_BYTES + 1
+            )
+            if len(compressed_payload) > MAX_ENCRYPTED_PAYLOAD_BYTES:
+                raise ValueError("decrypted compressed archive exceeds size limit")
+            if decrypt_process.wait() != 0:
+                raise ValueError(
+                    "age decryption failed; check backup identity and archive"
+                )
+        finally:
+            if decrypt_process.poll() is None:
+                decrypt_process.kill()
+                decrypt_process.wait()
+    with tarfile.open(fileobj=io.BytesIO(compressed_payload), mode="r:gz") as archive:
+        yield archive
 
 
 def _list_configuration_files(private_dir: Path) -> list[Path]:
@@ -45,10 +96,12 @@ def create_backup(
     *,
     protected_backup_paths: tuple[Path, ...] = (),
 ) -> Path:
-    """Archive private configuration without following symbolic links.
+    """Encrypt private configuration to an SSH public key without following symlinks.
 
     Args:
-        private_dir: Directory containing local private configuration.
+        private_dir: Directory containing local private configuration. Encryption uses
+            ZATA_BACKUP_RECIPIENT, the persistent backup recipients file when
+            present, or the default SSH Ed25519 public key file.
         protected_backup_paths: Archives that retention must not remove.
 
     Returns:
@@ -65,17 +118,38 @@ def create_backup(
     backup_dir.mkdir(mode=0o700, exist_ok=True)
     backup_dir.chmod(0o700)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    archive_path = backup_dir / f"private-{timestamp}.tar.gz"
+    archive_path = backup_dir / f"private-{timestamp}.tar.gz.age"
     partial_path = archive_path.with_suffix(".partial")
     try:
-        with partial_path.open("xb") as archive_file:
-            os.chmod(partial_path, 0o600)
-            with tarfile.open(fileobj=archive_file, mode="w:gz") as archive:
+        persistent_recipients_path = Path.home() / ".ssh/zata-backup-recipients.txt"
+        default_recipient_path = (
+            persistent_recipients_path
+            if persistent_recipients_path.exists()
+            else Path.home() / ".ssh/id_ed25519.pub"
+        )
+        recipient_path = Path(
+            os.environ.get("ZATA_BACKUP_RECIPIENT", str(default_recipient_path))
+        ).expanduser()
+        with io.BytesIO() as archive_buffer:
+            with tarfile.open(fileobj=archive_buffer, mode="w:gz") as archive:
                 for configuration_path in sorted(configuration_paths):
                     archive.add(
                         configuration_path,
                         arcname=str(configuration_path.relative_to(private_dir)),
                         recursive=False,
+                    )
+            with partial_path.open("xb") as encrypted_file:
+                os.chmod(partial_path, 0o600)
+                encryption_result = subprocess.run(
+                    ["age", "--encrypt", "-R", str(recipient_path)],
+                    input=archive_buffer.getvalue(),
+                    stdout=encrypted_file,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if encryption_result.returncode != 0:
+                    raise ValueError(
+                        "age encryption failed; no plaintext backup was saved"
                     )
         partial_path.replace(archive_path)
     finally:

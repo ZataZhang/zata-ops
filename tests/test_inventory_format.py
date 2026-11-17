@@ -6,7 +6,7 @@ import importlib
 import json
 import subprocess
 import sys
-import tarfile
+from zata_ops.private_config_backup import open_backup_archive
 import tomllib
 from pathlib import Path
 
@@ -103,14 +103,14 @@ def test_private_write_backs_up_and_preserves_values(private_dir):
         original_text
     )
     assert inventory_path.stat().st_mode & 0o777 == 0o600
-    archives = list((private_dir / "backups").glob("private-*.tar.gz"))
+    archives = list((private_dir / "backups").glob("private-*.tar.gz.age"))
     assert len(archives) == 1
-    with tarfile.open(archives[0]) as archive:
+    with open_backup_archive(archives[0]) as archive:
         archived = archive.extractfile("servers.toml")
         assert archived is not None
         assert archived.read().decode("utf-8") == original_text
     assert _run_formatter(inventory_path, "--write").returncode == 0
-    assert len(list((private_dir / "backups").glob("private-*.tar.gz"))) == 1
+    assert len(list((private_dir / "backups").glob("private-*.tar.gz.age"))) == 1
 
 
 def test_backup_failure_leaves_original_untouched(formatter, monkeypatch, private_dir):

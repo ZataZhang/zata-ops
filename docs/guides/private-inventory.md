@@ -53,23 +53,43 @@ Git clone 不会带上真实配置。
 just private-backup
 ```
 
-命令把 `config/private/` 内的文件复制为 `config/private/backups/private-<UTC时间>.tar.gz`，
+命令把 `config/private/` 内的文件复制为 `config/private/backups/private-<UTC时间>.tar.gz.age`，
 不包含 `backups/` 和提醒状态文件，保留最近 20 份。备份目录权限为 `700`、文件为 `600`，
-均由 Git 忽略；压缩包未加密。没有私有配置时命令失败，不会创建空备份。
+均由 Git 忽略；归档由 `age` 使用 SSH 公钥加密。没有私有配置或加密失败时命令失败，不会回退为明文备份。
+
+需要安装 `age`（macOS：`brew install age`）。默认优先使用 `~/.ssh/zata-backup-recipients.txt`
+中的公钥列表（每行一个，支持 SSH 公钥与 age 公钥），文件不存在时使用 `~/.ssh/id_ed25519.pub`，
+解密使用对应的 `~/.ssh/id_ed25519`；可通过 `ZATA_BACKUP_RECIPIENT`（公钥文件路径）和
+`ZATA_BACKUP_IDENTITY`（私钥文件路径）覆盖。支持 age 的 SSH Ed25519/RSA 密钥，
+带口令的私钥需要在本机终端交互解锁；口令不要写进命令或配置。加密只读取公钥，
+压缩后的明文在内存中传给 age，不创建明文归档文件。加密依赖不可用时，自动备份关联的写操作也会停止。
+
+可用 `age-keygen -o ~/.ssh/zata-backup-recovery.key` 生成独立恢复密钥，将
+`age-keygen -y ~/.ssh/zata-backup-recovery.key` 导出的公钥与 SSH 公钥一起写入上述公钥列表。
+新归档可由两把私钥中任意一把解密；恢复密钥需单独复制到密码管理器或安全离线介质，
+不要放进仓库、归档目录或对话。用 `ZATA_BACKUP_IDENTITY` 指向恢复密钥并运行恢复预览，
+验证独立解密后再依赖它。此设置不改变已有归档的解密密钥。
+
+最近 20 份的保留策略仅针对 `.tar.gz.age`；历史 `.tar.gz` 不会自动加密或清理，仍可恢复。
+请将 SSH 私钥另行安全备份，丢失私钥后无法恢复对应归档；不要将私钥放进 `config/private/`。
+直接复制活动的 `config/private/` 仍包含明文配置；需要异地保存时优先复制加密归档，私钥另存。
+
+上游依据：[age 官方使用说明](https://github.com/FiloSottile/age#usage)，于 2026-11-17 核验，
+本机通过 age 1.3.1 验证。
 本机副本用于恢复误改，可通过下节的 `just private-restore` 预览并恢复。
 
 ### 恢复私有配置
 
-先预览备份内容；默认只校验归档并列出相对路径，不修改文件：
+先预览备份内容；默认先解密（加密归档），再校验归档并列出相对路径，不修改文件：
 
 ```bash
-just private-restore config/private/backups/private-<UTC时间>.tar.gz
+just private-restore config/private/backups/private-<UTC时间>.tar.gz.age
 ```
 
 确认归档包含预期的私有配置文件后，显式应用恢复：
 
 ```bash
-just private-restore config/private/backups/private-<UTC时间>.tar.gz --apply
+just private-restore config/private/backups/private-<UTC时间>.tar.gz.age --apply
 ```
 
 恢复会用归档内容替换 `config/private/` 中的现有配置文件，不合并文件；`backups/` 与

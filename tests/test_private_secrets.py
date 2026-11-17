@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import tarfile
+from zata_ops.private_config_backup import open_backup_archive
 import tempfile
 from io import StringIO
 from pathlib import Path
@@ -70,8 +70,8 @@ def test_update_roundtrip_and_backup(credential_dir):
     }
     assert secret_path.stat().st_mode & 0o777 == 0o600
     assert credential_dir.stat().st_mode & 0o777 == 0o700
-    archive_path = sorted((credential_dir / "backups").glob("*.tar.gz"))[-1]
-    with tarfile.open(archive_path) as archive:
+    archive_path = sorted((credential_dir / "backups").glob("*.tar.gz.age"))[-1]
+    with open_backup_archive(archive_path) as archive:
         restored_text = archive.extractfile("secrets.env").read().decode("utf-8")
         assert (
             dotenv_values(stream=StringIO(restored_text), interpolate=False)[

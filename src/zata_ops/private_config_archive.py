@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import BinaryIO
 
-from zata_ops.private_config_backup import _list_configuration_files, create_backup
+from zata_ops.private_config_backup import (
+    _list_configuration_files,
+    create_backup,
+    open_backup_archive,
+)
 
 MAX_PRIVATE_ARCHIVE_SIZE_BYTES = 512 * 1024 * 1024
 
@@ -281,7 +285,7 @@ def restore_backup(
     """Preview, restore, or merge a private configuration archive.
 
     Args:
-        backup_archive_path: Tar archive containing private configuration files.
+        backup_archive_path: Encrypted age archive or legacy gzip tar archive.
         private_dir: Destination private configuration directory.
         apply_restore: Whether to apply the restore or import operation.
         merge_existing: Whether to add new files and preserve existing paths.
@@ -299,7 +303,7 @@ def restore_backup(
     if private_dir.is_symlink() or (private_dir.exists() and not private_dir.is_dir()):
         raise ValueError("private configuration directory is not a regular directory")
 
-    with tarfile.open(backup_archive_path, mode="r:gz") as archive:
+    with open_backup_archive(backup_archive_path) as archive:
         archive_members, total_size_bytes = _validate_archive_members(
             archive.getmembers()
         )

@@ -162,7 +162,8 @@ uv run python scripts/diagnostics/private_secrets.py run \
 
 现有 `just private-backup` 会包含 `secrets.env`，历史备份可能保留旧密码；数据库迁移归档放在
 `config/private/backups/` 下，不会被私有配置归档重复打包。
-压缩包**未加密**，手动复制时也要按凭据文件保管，放到自己信任的加密存储位置。
+新归档使用 `age` 和 SSH 公钥加密，恢复需要对应私钥；历史 `.tar.gz` 归档仍为明文，
+不会自动转换或清理。活动的 `secrets.env` 仍为明文，手动复制整个目录时需按凭据文件保管。
 备份、提醒与恢复方式见[私有运维配置](private-inventory.md)。
 
 ## Nacos 配置来源
