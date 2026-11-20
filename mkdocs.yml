@@ -48,6 +48,8 @@ nav:
       - Swarm 入口与算力分离: guides/swarm-production.md
       - Nacos 开发与远程部署准备: guides/nacos.md
       - Nacos dotenv 安全使用: guides/nacos-env.md
+      - OpenBao 部署与使用: guides/openbao.md
+      - OpenBao Traefik 入口: guides/openbao-traefik.md
       - Keycloak 统一身份中心: guides/keycloak.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md

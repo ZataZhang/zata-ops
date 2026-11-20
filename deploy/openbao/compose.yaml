@@ -1,0 +1,47 @@
+name: zata-ops-openbao
+
+services:
+  openbao:
+    image: docker.io/openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+    command: ["server"]
+    environment:
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /openbao/tls/server.crt
+    ports:
+      - "127.0.0.1:8200:8200"
+    volumes:
+      - type: bind
+        source: ./openbao.hcl
+        target: /openbao/config/openbao.hcl
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./tls
+        target: /openbao/tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - raft-data:/openbao/file
+      - audit-log:/openbao/logs
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    memswap_limit: 512m
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "bao", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: local
+
+volumes:
+  raft-data:
+    name: ${OPENBAO_RAFT_VOLUME:-${COMPOSE_PROJECT_NAME}_raft-data}
+  audit-log:

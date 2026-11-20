@@ -1,0 +1,13 @@
+[Unit]
+Description=Forward the private Traefik socket to the OpenBao loopback listener
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8200
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

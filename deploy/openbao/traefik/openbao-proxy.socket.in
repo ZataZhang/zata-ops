@@ -1,0 +1,12 @@
+[Unit]
+Description=Private Docker-network listener for the OpenBao Traefik route
+Requires=docker.service
+After=docker.service
+
+[Socket]
+ListenStream=@INGRESS_GATEWAY@:18200
+FreeBind=yes
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,30 @@
+http:
+  routers:
+    openbao-api:
+      entryPoints:
+        - websecure
+      rule: "Host(`@DOMAIN@`) && PathPrefix(`/v1/`)"
+      middlewares:
+        - openbao-dokploy-sources
+      service: openbao-api
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    openbao-dokploy-sources:
+      ipAllowList:
+        sourceRange:
+          - "@DOKPLOY_SOURCE_CIDR@"
+
+  services:
+    openbao-api:
+      loadBalancer:
+        serversTransport: openbao-tls
+        servers:
+          - url: "https://@INGRESS_GATEWAY@:18200"
+
+  serversTransports:
+    openbao-tls:
+      serverName: localhost
+      rootCAs:
+        - /etc/traefik/dynamic/openbao-upstream.crt

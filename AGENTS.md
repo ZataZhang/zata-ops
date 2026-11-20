@@ -58,6 +58,7 @@
 
 ## Critical Summary
 
+- 发现故障时，说明已确认的原因、判断依据和可执行的解决步骤。无法确认根因时，明确说明尚未确认，列出有依据的可能原因，并按优先级给出验证或排除步骤。
 - 本仓库是公开仓库：被跟踪文件不得包含真实 IP、域名、账号、凭据或云资源 ID，私有值只写进 `config/private/`
 - 后端必须遵守四层依赖方向：
   `src/backend/api/ -> src/backend/core/ -> src/backend/engines/ -> src/backend/infrastructure/`
