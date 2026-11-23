@@ -14,6 +14,8 @@ gateway="$(docker network inspect openbao-ingress --format '{{(index .IPAM.Confi
 
 在现有 Traefik Compose 的 Traefik 服务 `networks` 中追加 `openbao-ingress`，并在顶层 `networks` 声明 `openbao-ingress: {external: true}`，让下次重建保留网络。运行 `docker compose -f /opt/traefik/docker-compose.yml config --quiet` 检查合并结果。当前容器已通过上一步连接，可以直接使用动态配置。
 
+在 OpenBao 主机的 `deploy/openbao/traefik/` 目录以 root 安装 socket relay 和上游证书：
+
 如果宿主机的 UFW 默认拒绝入站，放行专用网桥到本地转发端口。网桥与网段随 Docker 网络而定，重建网络后重新核对。
 
 ```bash
@@ -22,27 +24,41 @@ bridge="$(ip -o -4 addr show | awk -v ip="$gateway" '{split($4, address, "/"); i
 test -n "$bridge" && ufw allow in on "$bridge" from "$subnet" to "$gateway" port 18200 proto tcp comment "OpenBao Traefik relay"
 ```
 
-在 `deploy/openbao/traefik/` 对应的目标目录替换下列示例值。已登记域名从本机忽略跟踪的 `config/private/openbao/` 下对应实例的 `ingress.env` 获取。首次安装前如果发现同名配置已存在，先备份并核对。
+来源名单保存在本机忽略跟踪的 `config/private/openbao/<实例>/ingress.env`。用逗号分隔填写 Dokploy 和所有需要访问 API 的团队出口 CIDR；单个 IPv4 地址写 `/32`，IPv6 地址写 `/128`。团队若有固定 VPN 或 NAT 出口，可登记为一条来源；否则按成员出口逐项维护。新增成员或出口时，只更新此私有清单并重新生成路由，不需要改部署模板。团队成员通过安全渠道取得该实例的私有配置。
+
+```dotenv
+OPENBAO_INGRESS_DOMAIN=openbao.example.com
+OPENBAO_ALLOWED_SOURCE_CIDRS=192.0.2.10/32,198.51.100.25/32,2001:db8::25/128
+```
+
+先按前面的步骤在 OpenBao 主机创建并连接网桥，再从工作站读取网关地址并用私有配置生成路由。生成文件权限为 `0600`，只需将文件复制到主机后安装到 Traefik 的动态配置目录。首次安装前如果发现同名配置已存在，先备份并核对。
 
 ```bash
-domain=openbao.example.com
-dokploy_source_cidr=192.0.2.10/32
-upstream_cert=/opt/zata-ops/openbao/tls/server.crt
-
+gateway="$(docker network inspect openbao-ingress --format '{{(index .IPAM.Config 0).Gateway}}')"
 sed "s|@INGRESS_GATEWAY@|${gateway}|g" openbao-proxy.socket.in \
   > /etc/systemd/system/openbao-proxy.socket
 install -m 0644 openbao-proxy.service /etc/systemd/system/openbao-proxy.service
 systemctl daemon-reload
 systemctl enable --now openbao-proxy.socket
+install -m 0644 /opt/zata-ops/openbao/tls/server.crt /opt/traefik/dynamic/openbao-upstream.crt
+```
 
-install -m 0644 "$upstream_cert" /opt/traefik/dynamic/openbao-upstream.crt
-route_file="$(mktemp /opt/traefik/dynamic/.openbao-api.XXXXXX)"
-sed -e "s|@INGRESS_GATEWAY@|${gateway}|g" \
-  -e "s|@DOMAIN@|${domain}|g" \
-  -e "s|@DOKPLOY_SOURCE_CIDR@|${dokploy_source_cidr}|g" \
-  openbao-dynamic.yml.in > "$route_file"
-chmod 0644 "$route_file"
-mv "$route_file" /opt/traefik/dynamic/openbao-api.yml
+然后在仓库根目录的工作站终端从该主机读取网关，用本机私有配置生成路由并复制到主机。把 `SSH_ALIAS` 替换为实例 SSH 配置中的主机别名，把 `INSTANCE` 替换为私有清单中的实例目录名：
+
+```bash
+ssh_alias=SSH_ALIAS
+instance=INSTANCE
+ssh_config="config/private/openbao/${instance}/ssh.conf"
+instance_config="config/private/openbao/${instance}/ingress.env"
+gateway="$(ssh -F "$ssh_config" "$ssh_alias" "docker network inspect openbao-ingress --format '{{(index .IPAM.Config 0).Gateway}}'")"
+rendered_route="$(mktemp)"
+trap 'rm -f "$rendered_route"' EXIT
+uv run python deploy/openbao/traefik/render_dynamic.py \
+  --config "$instance_config" \
+  --gateway "$gateway" \
+  --output "$rendered_route"
+scp -F "$ssh_config" "$rendered_route" "$ssh_alias:/tmp/openbao-api.yml"
+ssh -F "$ssh_config" "$ssh_alias" 'install -m 0644 /tmp/openbao-api.yml /opt/traefik/dynamic/openbao-api.yml && rm -f /tmp/openbao-api.yml'
 ```
 
 Traefik 使用 `localhost` 匹配现有上游证书的 SAN。OpenBao 换证书后更新 `openbao-upstream.crt`，并让 Traefik 重新加载路由文件。

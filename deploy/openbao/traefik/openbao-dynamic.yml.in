@@ -5,16 +5,16 @@ http:
         - websecure
       rule: "Host(`@DOMAIN@`) && PathPrefix(`/v1/`)"
       middlewares:
-        - openbao-dokploy-sources
+        - openbao-source-allowlist
       service: openbao-api
       tls:
         certResolver: letsencrypt
 
   middlewares:
-    openbao-dokploy-sources:
+    openbao-source-allowlist:
       ipAllowList:
         sourceRange:
-          - "@DOKPLOY_SOURCE_CIDR@"
+@SOURCE_RANGE_ENTRIES@
 
   services:
     openbao-api:

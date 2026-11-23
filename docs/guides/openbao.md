@@ -2,6 +2,8 @@
 
 `deploy/openbao/` 提供单节点 OpenBao，使用 Raft 持久化和独立审计卷。它适合经 SSH 管理的私有实例。使用它保存 API Key、数据库密码等凭据，Nacos 可以继续发布业务参数和开关。主机重启后，采用 Shamir 解封的实例需要重新解封。对恢复时间有要求的应用应先评估备份、恢复和高可用方案。
 
+个人账号、权限、登录、token 续期、密钥更新与故障排查见 [OpenBao 日常使用指南](openbao-usage.md)。
+
 ## 部署
 
 从[私有清单](private-inventory.md)获取目标主机的 SSH 参数。在 Linux 主机上确认 Docker Engine 28 或更新版本、Compose 插件、OpenSSL 和宿主机回环端口可用。镜像固定到 `2.7.2` 和对应的多架构摘要。
