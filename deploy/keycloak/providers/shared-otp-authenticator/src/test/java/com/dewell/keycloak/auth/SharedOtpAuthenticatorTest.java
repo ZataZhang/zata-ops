@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -12,17 +13,23 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.Response;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.http.HttpRequest;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserProvider;
+import org.keycloak.protocol.LoginProtocol;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.mockito.MockedStatic;
 
@@ -129,8 +136,9 @@ final class SharedOtpAuthenticatorTest {
         );
     }
 
-    @Test
-    void verifiedCodeForOldEmailUsernameReturnsToLoginWithoutCreatingAnAccount() {
+    @ParameterizedTest
+    @ValueSource(strings = {"shared", "freshai"})
+    void verifiedCodeForOldEmailUsernameReturnsToLoginWithoutCreatingAnAccount(String loginTheme) {
         AuthenticationFlowContext context = mock(AuthenticationFlowContext.class);
         AuthenticationSessionModel authSession = mock(AuthenticationSessionModel.class);
         KeycloakSession session = mock(KeycloakSession.class);
@@ -139,6 +147,9 @@ final class SharedOtpAuthenticatorTest {
         LoginFormsProvider loginForm = mock(LoginFormsProvider.class);
         HttpRequest request = mock(HttpRequest.class);
         UserModel existingUser = mock(UserModel.class);
+        ClientModel client = mock(ClientModel.class);
+        LoginProtocol protocol = mock(LoginProtocol.class, RETURNS_SELF);
+        Response redirectResponse = mock(Response.class);
         MultivaluedHashMap<String, String> parameters = new MultivaluedHashMap<>();
         parameters.putSingle("method", "email");
         parameters.putSingle("step", "verify");
@@ -148,8 +159,18 @@ final class SharedOtpAuthenticatorTest {
         when(context.getAuthenticationSession()).thenReturn(authSession);
         when(context.getSession()).thenReturn(session);
         when(context.getRealm()).thenReturn(realm);
-        when(context.form()).thenReturn(loginForm);
-        when(loginForm.setError("sharedCodeSignInUnavailable")).thenReturn(loginForm);
+        when(authSession.getProtocol()).thenReturn(OIDCLoginProtocol.LOGIN_PROTOCOL);
+        when(authSession.getClient()).thenReturn(client);
+        when(client.getAttribute("login_theme")).thenReturn(loginTheme);
+        if ("freshai".equals(loginTheme)) {
+            when(session.getProvider(LoginProtocol.class, OIDCLoginProtocol.LOGIN_PROTOCOL)).thenReturn(protocol);
+            when(protocol.sendError(
+                authSession, LoginProtocol.Error.CONSENT_DENIED, "freshai_email_login_unavailable"
+            )).thenReturn(redirectResponse);
+        } else {
+            when(context.form()).thenReturn(loginForm);
+            when(loginForm.setError("sharedCodeSignInUnavailable")).thenReturn(loginForm);
+        }
         when(authSession.getAuthNote("shared_otp_channel")).thenReturn("email");
         when(authSession.getAuthNote("shared_otp_recipient")).thenReturn(EMAIL_RECIPIENT);
         when(realm.isRegistrationAllowed()).thenReturn(true);
@@ -166,7 +187,13 @@ final class SharedOtpAuthenticatorTest {
             new SharedOtpAuthenticator().action(context);
         }
 
-        verify(loginForm).createForm("shared-login.ftl");
+        if ("freshai".equals(loginTheme)) {
+            verify(context).forceChallenge(redirectResponse);
+            verify(context, never()).form();
+        } else {
+            verify(loginForm).createForm("shared-login.ftl");
+            verify(context, never()).forceChallenge(any());
+        }
         verify(authSession).removeAuthNote("shared_otp_recipient");
         verify(users, never()).addUser(realm, EMAIL_RECIPIENT);
         verify(context, never()).setUser(any());

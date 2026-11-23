@@ -7,6 +7,8 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.protocol.LoginProtocol;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.services.managers.BruteForceProtector;
 
@@ -180,7 +182,21 @@ final class SharedOtpAuthenticator implements Authenticator {
             if (session.users().getUserByUsername(realm, recipient) != null
                 || ("email".equals(channel) && session.users().getUserByEmail(realm, recipient) != null)) {
                 clearOtpNotes(authSession);
-                challengeLoginError(context, "sharedCodeSignInUnavailable");
+                if ("email".equals(channel)
+                    && OIDCLoginProtocol.LOGIN_PROTOCOL.equals(authSession.getProtocol())
+                    && "freshai".equals(authSession.getClient().getAttribute("login_theme"))) {
+                    // FreshAI 在自己的登录页读取实际注册策略。
+                    LoginProtocol protocol = session.getProvider(LoginProtocol.class, authSession.getProtocol());
+                    protocol.setRealm(realm)
+                        .setHttpHeaders(context.getHttpRequest().getHttpHeaders())
+                        .setUriInfo(context.getUriInfo())
+                        .setEventBuilder(context.getEvent());
+                    context.forceChallenge(protocol.sendError(
+                        authSession, LoginProtocol.Error.CONSENT_DENIED, "freshai_email_login_unavailable"
+                    ));
+                } else {
+                    challengeLoginError(context, "sharedCodeSignInUnavailable");
+                }
                 return;
             }
             user = createVerifiedUser(session, realm, channel, recipient);

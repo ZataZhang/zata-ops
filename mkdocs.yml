@@ -51,7 +51,7 @@ nav:
       - OpenBao 部署与使用: guides/openbao.md
       - OpenBao 日常使用指南: guides/openbao-usage.md
       - OpenBao Traefik 入口: guides/openbao-traefik.md
-      - Keycloak 统一身份中心与登录: guides/keycloak.md
+      - Keycloak 统一身份中心与登录排查: guides/keycloak.md
       - GitHub Actions Runner: guides/github-actions-runner.md
       - SSH 隧道: guides/tunnel.md
       - 本地 E2B Embed 沙箱: guides/e2b-embed.md
