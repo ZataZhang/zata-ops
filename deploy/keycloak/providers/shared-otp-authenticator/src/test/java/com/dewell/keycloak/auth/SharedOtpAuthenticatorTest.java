@@ -4,19 +4,27 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import jakarta.ws.rs.core.MultivaluedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.keycloak.authentication.AuthenticationFlowContext;
+import org.keycloak.forms.login.LoginFormsProvider;
+import org.keycloak.http.HttpRequest;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserProvider;
+import org.keycloak.sessions.AuthenticationSessionModel;
+import org.mockito.MockedStatic;
 
 final class SharedOtpAuthenticatorTest {
     private static final String PHONE_RECIPIENT = "+8613800000000";
@@ -119,5 +127,49 @@ final class SharedOtpAuthenticatorTest {
             verifiedUser,
             OtpChallenges.findUserByChannel(session, realm, "email", EMAIL_RECIPIENT)
         );
+    }
+
+    @Test
+    void verifiedCodeForOldEmailUsernameReturnsToLoginWithoutCreatingAnAccount() {
+        AuthenticationFlowContext context = mock(AuthenticationFlowContext.class);
+        AuthenticationSessionModel authSession = mock(AuthenticationSessionModel.class);
+        KeycloakSession session = mock(KeycloakSession.class);
+        UserProvider users = mock(UserProvider.class);
+        RealmModel realm = mock(RealmModel.class);
+        LoginFormsProvider loginForm = mock(LoginFormsProvider.class);
+        HttpRequest request = mock(HttpRequest.class);
+        UserModel existingUser = mock(UserModel.class);
+        MultivaluedHashMap<String, String> parameters = new MultivaluedHashMap<>();
+        parameters.putSingle("method", "email");
+        parameters.putSingle("step", "verify");
+        parameters.putSingle("code", "123456");
+        when(request.getDecodedFormParameters()).thenReturn(parameters);
+        when(context.getHttpRequest()).thenReturn(request);
+        when(context.getAuthenticationSession()).thenReturn(authSession);
+        when(context.getSession()).thenReturn(session);
+        when(context.getRealm()).thenReturn(realm);
+        when(context.form()).thenReturn(loginForm);
+        when(loginForm.setError("sharedCodeSignInUnavailable")).thenReturn(loginForm);
+        when(authSession.getAuthNote("shared_otp_channel")).thenReturn("email");
+        when(authSession.getAuthNote("shared_otp_recipient")).thenReturn(EMAIL_RECIPIENT);
+        when(realm.isRegistrationAllowed()).thenReturn(true);
+        when(session.users()).thenReturn(users);
+        when(users.getUserByUsername(realm, EMAIL_RECIPIENT)).thenReturn(existingUser);
+
+        try (MockedStatic<OtpChallenges> otpChallenges = mockStatic(OtpChallenges.class)) {
+            otpChallenges.when(() -> OtpChallenges.verify(
+                session, realm, OtpChallenges.PURPOSE_LOGIN, "email", EMAIL_RECIPIENT, "123456"
+            )).thenReturn(OtpChallenges.VerifyResult.VERIFIED);
+            otpChallenges.when(() -> OtpChallenges.findUserByChannel(
+                session, realm, "email", EMAIL_RECIPIENT
+            )).thenCallRealMethod();
+            new SharedOtpAuthenticator().action(context);
+        }
+
+        verify(loginForm).createForm("shared-login.ftl");
+        verify(authSession).removeAuthNote("shared_otp_recipient");
+        verify(users, never()).addUser(realm, EMAIL_RECIPIENT);
+        verify(context, never()).setUser(any());
+        verify(context, never()).success();
     }
 }

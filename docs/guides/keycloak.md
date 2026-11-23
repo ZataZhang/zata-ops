@@ -39,6 +39,7 @@
 - 新用户只通过验证码登录自动注册；Keycloak 自带注册页不收集已验证联系方式，realm 的注册流程绑定为只含 Deny Access 的 `shared-registration-disabled`。
 - 首次登录只收集实际选择并验证的联系方式；部署后用 `kcadm.sh update users/profile -r <realm> -f realm/user-profile.json` 将邮箱、名字和姓氏设为可选，避免手机号新用户被默认 User Profile 要求补填邮箱。该文件同时声明短信登录写入的 `phone_number`（`+86` 加 11 位号码）和 `phone_number_verified`，仅管理员可在用户详情页查看，用户本人不可查看或修改。邮箱验证码新建的用户以邮箱为用户名，短信验证码新建的用户以 E.164 手机号（如 `+8613800000000`）为用户名，管理后台默认搜索框可按号码片段查找（`*13800*`）；用户名会以 `preferred_username` 出现在各应用的令牌中。
 - 开发应用的 OIDC 登录时，用本机 Keycloak 实例测试，不往生产 realm 放开发用 client。
+- 更换绑定邮箱或手机号后，原用户名仍可保留旧联系方式。验证码通过后，如果该联系方式无法匹配可登录的账号，但已占用用户名或邮箱，登录页会提示用户使用当前绑定的邮箱或手机号。验证码登录仍以当前绑定关系为准。
 
 realm 文件只在 realm 不存在时导入，之后的改动先改文件并审查，再用 `kcadm.sh` 应用到线上，步骤见 README。
 

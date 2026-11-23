@@ -176,6 +176,13 @@ final class SharedOtpAuthenticator implements Authenticator {
                 challengeLoginError(context);
                 return;
             }
+            // 换绑后，旧联系方式可能仍是用户名。验证码不能用来登录那个账号。
+            if (session.users().getUserByUsername(realm, recipient) != null
+                || ("email".equals(channel) && session.users().getUserByEmail(realm, recipient) != null)) {
+                clearOtpNotes(authSession);
+                challengeLoginError(context, "sharedCodeSignInUnavailable");
+                return;
+            }
             user = createVerifiedUser(session, realm, channel, recipient);
         } else if ("email".equals(channel)) {
             user.setEmailVerified(true);
@@ -190,10 +197,14 @@ final class SharedOtpAuthenticator implements Authenticator {
             session.getContext().getUri(),
             java.util.Set.of("otp")
         );
-        authSession.removeAuthNote(AUTH_NOTE_CHANNEL);
-        authSession.removeAuthNote(AUTH_NOTE_RECIPIENT);
+        clearOtpNotes(authSession);
         context.setUser(user);
         context.success();
+    }
+
+    private void clearOtpNotes(AuthenticationSessionModel authSession) {
+        authSession.removeAuthNote(AUTH_NOTE_CHANNEL);
+        authSession.removeAuthNote(AUTH_NOTE_RECIPIENT);
     }
 
     static UserModel createVerifiedUser(
@@ -230,9 +241,13 @@ final class SharedOtpAuthenticator implements Authenticator {
     }
 
     private void challengeLoginError(AuthenticationFlowContext context) {
+        challengeLoginError(context, "sharedLoginFailed");
+    }
+
+    private void challengeLoginError(AuthenticationFlowContext context, String messageKey) {
         context.challenge(
             context.form()
-                .setError("sharedLoginFailed")
+                .setError(messageKey)
                 .createForm("shared-login.ftl")
         );
     }
