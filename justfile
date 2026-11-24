@@ -63,6 +63,10 @@ service-list:
 service-show name:
     uv run python scripts/diagnostics/private_services.py show {{quote(name)}}
 
+# Preview FreshAI developer onboarding; pass --apply to create the account and allow the IP.
+openbao-onboard instance username ip *args:
+    uv run python deploy/openbao/traefik/onboard.py {{quote(instance)}} {{quote(username)}} {{quote(ip)}} {{args}}
+
 # Offline example policy check; no network, no server startup.
 opensandbox-check:
     uv run python scripts/opensandbox/prepare.py validate --config deploy/opensandbox/config.example.toml --env-file deploy/opensandbox/server.env.example --example

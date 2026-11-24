@@ -4,6 +4,8 @@
 
 真实地址、账号和权限核验记录保存在本机 `config/private/openbao/` 下对应实例目录。先从 [私有运维清单](private-inventory.md) 定位实例，再阅读其 `README.md` 和 `accounts.md`。这些文件由 Git 忽略，克隆仓库后需要通过团队的安全渠道取得。
 
+FreshAI 团队成员需要个人账号和公网 IP 放行时，可使用[开发者开通脚本](openbao-developer-onboarding.md)。
+
 ## 账号、策略和 token 的关系
 
 开发者用个人账号登录，OpenBao 签发 token。应用携带 token 请求密钥时，OpenBao 根据策略检查路径和操作。一次登录可以供多次启动使用。
