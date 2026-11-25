@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import typer
 
 from zata_ops.app._inspect import InspectionOptions, inspect_application
+from zata_ops.config import DEFAULT_PRIVATE_DIR, PRIVATE_DIR_ENV
 from zata_ops.inventory import load_inventory, resolve_application
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -21,8 +23,8 @@ def inspect_command(
     server: str | None = typer.Option(
         None, help="Exact server name; required for ambiguous applications."
     ),
-    inventory: Path = typer.Option(
-        Path("config/private/servers.toml"),
+    inventory: Path | None = typer.Option(
+        None,
         help="Local inventory TOML path (relative to current directory).",
     ),
     dry_run: bool = typer.Option(
@@ -41,8 +43,10 @@ def inspect_command(
         Prints JSON; exits 0 (passed/preview), 1 (failure), 2 (configuration
         error), or 3 (incomplete). Argument syntax errors use Typer output.
     """
+    private_directory = Path(os.environ.get(PRIVATE_DIR_ENV) or DEFAULT_PRIVATE_DIR)
+    inventory_path = inventory or private_directory / "servers.toml"
     try:
-        inventory_config = load_inventory(inventory)
+        inventory_config = load_inventory(inventory_path.expanduser())
     except (OSError, ValueError):
         typer.echo(
             json.dumps(

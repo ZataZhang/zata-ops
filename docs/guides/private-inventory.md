@@ -232,7 +232,7 @@ just inventory-check config/servers.example.toml --example
 被 Git 忽略且未被跟踪。错误只报告字段位置和错误类型，不打印真实配置值。
 `--example` 仅用于公共示例或临时测试文件，跳过 Git 私有性检查。
 验证不连接服务器，不验证密钥存在、SSH 认证、应用在线状态或日期格式。
-缺失文件和格式错误会以非零状态退出。`app inspect` 已接入此清单，其他命令尚未自动读取。
+缺失文件和格式错误会以非零状态退出。`app inspect` 和 `doctor` 读取此清单。参见[独立 CLI 安装](cli-installation.md)。
 
 ## 应用现场检查
 

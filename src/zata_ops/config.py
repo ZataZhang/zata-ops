@@ -18,6 +18,10 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+PRIVATE_DIR_ENV = "ZATA_OPS_PRIVATE_DIR"
+DEFAULT_PRIVATE_DIR = Path("config/private")
+
+
 class OpsSettings(BaseSettings):
     """Operational settings loaded from project ``.env`` files.
 

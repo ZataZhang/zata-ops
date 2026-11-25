@@ -18,7 +18,8 @@ zata-ops app inspect example-app --server example-server
 zata-ops app inspect example-app --inventory /path/to/private/servers.toml
 ```
 
-默认清单路径是当前目录下的 `config/private/servers.toml`，不自动搜索上级目录，
+未传入 `--inventory` 时，CLI 读取 `ZATA_OPS_PRIVATE_DIR` 所指目录中的 `servers.toml`，
+或默认读取当前目录下的 `config/private/servers.toml`。CLI 不自动搜索上级目录，
 也不从 `.env` 推断目标。应用名称必须精确匹配；多个服务器上有同名应用时，
 省略 `--server` 会报 `target_ambiguous`，不会默认选择第一个。
 

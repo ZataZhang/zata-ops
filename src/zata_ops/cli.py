@@ -15,6 +15,7 @@ from zata_ops.app import cli as application_cli
 from zata_ops.db import cli as db_cli
 from zata_ops.deploy import cli as deploy_cli
 from zata_ops.env import cli as env_cli
+from zata_ops.local_cli import local_app, service_app
 from zata_ops.logs import cli as logs_cli
 from zata_ops.observability import cli as observability_cli
 from zata_ops.tunnel import cli as tunnel_cli
@@ -29,6 +30,9 @@ app: typer.Typer = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+app.add_typer(local_app)
+app.add_typer(service_app, name="service", help="Query the private service registry.")
 
 app.add_typer(
     application_cli.app, name="app", help="Inspect applications from private inventory."

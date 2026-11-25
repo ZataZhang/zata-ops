@@ -143,14 +143,21 @@ def parse_services_config(service_text: str) -> ServicesConfig:
     Raises:
         ValueError: If TOML or service fields are invalid.
     """
-    return ServicesConfig.model_validate_json(json.dumps(tomllib.loads(service_text)))
+    try:
+        registry_json = json.dumps(tomllib.loads(service_text))
+    except TypeError:
+        raise ValueError("unsupported TOML value type") from None
+    return ServicesConfig.model_validate_json(registry_json)
 
 
-def load_services(service_path: Path) -> ServicesConfig:
+def load_services(
+    service_path: Path, *, enforce_permissions: bool = True
+) -> ServicesConfig:
     """Load the private service registry without exposing credentials.
 
     Args:
         service_path: Private TOML service registry.
+        enforce_permissions: Restrict file mode before reading when enabled.
 
     Returns:
         Validated registry; an empty registry if the file does not exist.
@@ -163,7 +170,8 @@ def load_services(service_path: Path) -> ServicesConfig:
         raise ValueError("symlink service file")
     if not service_path.exists():
         return ServicesConfig()
-    service_path.chmod(0o600)
+    if enforce_permissions:
+        service_path.chmod(0o600)
     return parse_services_config(service_path.read_text(encoding="utf-8"))
 
 

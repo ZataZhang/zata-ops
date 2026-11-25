@@ -39,6 +39,7 @@ nav:
   - 使用指南:
       - 私有配置、清单与加密备份恢复: guides/private-inventory.md
       - 服务与凭据管理: guides/private-secrets.md
+      - 独立 CLI 安装: guides/cli-installation.md
       - 应用现场检查: guides/application-inspection.md
       - 备份、恢复与迁移: guides/backup-and-restore.md
       - 调度示例: guides/scheduling.md

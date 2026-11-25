@@ -49,6 +49,8 @@ just private-config-show
 另附 `expiry_status`（`none` / `ok` / `expiring` / `expired`）与 `days_until_expiry`；
 30 天内到期或已过期的凭据会在 stderr 打印提醒，stdout 的 JSON 保持可解析。
 空清单会提示添加服务；非法配置的错误不会回显原始值。
+仓库外可通过 [独立 CLI](cli-installation.md) 使用 `zata-ops service list/show` 查询。
+
 `private-config-show` 会跨服务器清单、服务清单和 OpenSandbox 配置生成统一摘要，凭据只显示名称与配置状态。
 
 按服务名称直接使用关联密码，例如为 PostgreSQL 客户端注入 `PGPASSWORD`：

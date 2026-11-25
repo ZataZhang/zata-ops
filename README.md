@@ -26,6 +26,8 @@ uv tool install --force /path/to/zata-ops
 zata-ops --version
 ```
 
+固定版本安装、仓库外配置及本机诊断见[独立安装与本机诊断](docs/guides/cli-installation.md)。
+
 需要 SSH 远程操作 VPS 或使用 `tunnel` 时，确保本机安装并配置了系统 `ssh` 命令。
 
 仓库内的 [zata-ops 运维 Skill](skills/zata-ops-operations/SKILL.md) 可按任务引导使用隧道、数据库、日志及 VPS 命令；[部署 Skill](skills/agent-deploy/SKILL.md) 负责部署查看与回滚的 plan/apply/verify 流程；[服务器拓扑 Skill](skills/server-topology-html/SKILL.md) 可把私有清单画成单文件 HTML 关系图。
