@@ -1,6 +1,6 @@
 ---
 name: zata-ops-operations
-description: 使用 zata-ops 处理 SSH 隧道、数据库备份/恢复/跨机迁移、日志排查和 VPS 初始化；适用于询问或执行本仓库已有运维 CLI 工作流，不替代专门的 GitHub CD 或监控接入 skill。
+description: 使用 zata-ops 处理服务器与应用巡检、SSH 隧道、数据库备份/恢复/迁移、日志和 VPS 初始化，并查找 Nacos、OpenBao 及已登记服务的登录和凭据使用流程。GitHub CD 和监控接入有专项 skill。
 ---
 
 # zata-ops 运维操作
@@ -11,6 +11,10 @@ description: 使用 zata-ops 处理 SSH 隧道、数据库备份/恢复/跨机�
 
 | 任务 | 仓库权威入口 | 操作要点 |
 |---|---|---|
+| 服务器与应用巡检 | [私有运维配置](../../docs/guides/private-inventory.md)、[应用现场检查](../../docs/guides/application-inspection.md) | 用私有清单定位目标。应用检查用 `zata-ops app inspect <应用> --server <服务器>` 核验 SSH、运行状态和 HTTP 入口，支持 `--dry-run`。整机巡检按问题通过 SSH 只读核查磁盘、内存或系统服务，并报告核验时间。 |
+| Nacos | [部署](../../docs/guides/nacos.md)、[配置读取与注入](../../docs/guides/nacos-env.md) | 确认实例和配置标识。需要确认可读性时优先列配置变量名，按指南将值注入目标进程。 |
+| OpenBao | [日常使用与登录](../../docs/guides/openbao-usage.md)、[FreshAI 开发者开通](../../docs/guides/openbao-developer-onboarding.md) | 个人账号按指南登录、续期和退出。服务身份按 AppRole 指南操作。FreshAI 开发者首次开通走专项流程。 |
+| 服务账号与登录入口 | [服务与凭据管理](../../docs/guides/private-secrets.md)、[Keycloak 统一登录](../../docs/guides/keycloak.md) | 在 zata-ops 仓库用 `just service-list` 或 `just service-show <名称>` 查登记入口和凭据配置状态。按服务指南登录或注入凭据，报告实际核验结果。 |
 | SSH 本地/远端转发 | `docs/guides/tunnel.md`、`src/zata_ops/tunnel/cli.py` | `tunnel open <name> -- ssh ...` 后台启动；`list/status/close` 管理。认证、转发和重连由系统 `ssh` 负责。 |
 | PostgreSQL 跨机迁移 | [数据库迁移](references/database-migration.md)、`src/zata_ops/db/cli.py` | 区分复制快照与应用切换，核对目标库和持续写入。 |
 | S3 备份、恢复和检查 | `docs/guides/backup-and-restore.md`、`src/zata_ops/db/cli.py` | `db check` 检查 S3，**不是**数据库连通性测试；恢复参数可能替换目标数据。 |
