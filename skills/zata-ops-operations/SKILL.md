@@ -18,6 +18,7 @@ description: 使用 zata-ops 处理服务器与应用巡检、SSH 隧道、数�
 | SSH 本地/远端转发 | `docs/guides/tunnel.md`、`src/zata_ops/tunnel/cli.py` | `tunnel open <name> -- ssh ...` 后台启动；`list/status/close` 管理。认证、转发和重连由系统 `ssh` 负责。 |
 | PostgreSQL 跨机迁移 | [数据库迁移](references/database-migration.md)、`src/zata_ops/db/cli.py` | 区分复制快照与应用切换，核对目标库和持续写入。 |
 | S3 备份、恢复和检查 | `docs/guides/backup-and-restore.md`、`src/zata_ops/db/cli.py` | `db check` 检查 S3，**不是**数据库连通性测试；恢复参数可能替换目标数据。 |
+| 私有配置备份与恢复密钥 | [为历史备份添加恢复密钥](../../docs/guides/private-inventory.md#为历史备份添加恢复密钥) | 新增恢复公钥只对新归档生效。需要用恢复私钥打开历史归档时，按指南重新加密为新副本，并用两把私钥分别运行恢复预览。 |
 | VPS 初始化和 ACME 修复 | `docs/guides/vps-provisioning.md`、`src/zata_ops/env/cli.py` | 先看 `--dry-run` 的远端计划，再按用户授权执行。 |
 | 容器或 systemd 日志 | `src/zata_ops/logs/cli.py` | `logs tail/search` 可先用 `--dry-run` 确认命令；输出可能含业务敏感信息。已接入 Loki 的服务器优先用 `log-query` skill 经 HTTPS 只读查询，不需要 SSH。 |
 | 终端状态面板 | `src/zata_ops/observability/cli.py` | 当前 `dashboard` 使用模拟数据，不能当作真实健康检查。 |
