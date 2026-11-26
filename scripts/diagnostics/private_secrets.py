@@ -4,25 +4,23 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import os
-import subprocess
 import sys
 import warnings
-from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import dotenv_values
 
+from zata_ops.credential_execution import (
+    ExecutionOptions,
+    redact_output as redact_output,
+    run_with_environment,
+)
 from zata_ops.private_credentials import (
     SECRET_NAME,
     credential_status,
     store_secret,
     validate_private_directory,
 )
-
-REDACTION_MARKER = "***"
-# 过短的凭据做字面替换会误伤普通输出，也无法可信地屏蔽，因此拒绝放开输出。
-MIN_REDACTABLE_LENGTH = 8
 
 
 def read_hidden_secret(prompt: str) -> str:
@@ -43,22 +41,6 @@ def read_hidden_secret(prompt: str) -> str:
     with warnings.catch_warnings():
         warnings.simplefilter("error", getpass.GetPassWarning)
         return getpass.getpass(prompt)
-
-
-def redact_output(output_text: str, secret_values: list[str]) -> str:
-    """Replace every literal occurrence of each credential value.
-
-    Args:
-        output_text: Child output decoded as text.
-        secret_values: Injected credential values, longest replaced first.
-
-    Returns:
-        Output with each value replaced by the redaction marker.
-    """
-    redacted_text = output_text
-    for secret_value in sorted(secret_values, key=len, reverse=True):
-        redacted_text = redacted_text.replace(secret_value, REDACTION_MARKER)
-    return redacted_text
 
 
 def run_with_credentials(
@@ -97,75 +79,6 @@ def run_with_credentials(
         command,
         ExecutionOptions(working_directory, show_redacted_output),
     )
-
-
-@dataclass(frozen=True)
-class ExecutionOptions:
-    """Control the child working directory and optional literal output redaction."""
-
-    working_directory: Path | None = None
-    show_redacted_output: bool = False
-
-
-def run_with_environment(
-    selected_environment: dict[str, str],
-    command: list[str],
-    options: ExecutionOptions,
-) -> int:
-    """Execute a command with selected values and controlled output.
-
-    Args:
-        selected_environment: Validated destination names and literal values.
-        command: Argument vector, executed without a shell.
-        options: Working directory and output policy.
-
-    Returns:
-        Child exit code, or one for signal termination.
-
-    Raises:
-        ValueError: Invalid environment, directory, command or redaction length.
-        OSError: Child cannot start.
-    """
-    if not command or any(
-        not SECRET_NAME.fullmatch(name) or "\x00" in value
-        for name, value in selected_environment.items()
-    ):
-        raise ValueError("invalid command or environment")
-    working_directory = options.working_directory
-    show_redacted_output = options.show_redacted_output
-    if working_directory is not None and not working_directory.is_dir():
-        raise ValueError("working directory does not exist")
-    injected_values = list(selected_environment.values())
-    if show_redacted_output and any(
-        len(injected_value) < MIN_REDACTABLE_LENGTH
-        for injected_value in injected_values
-    ):
-        raise ValueError("credential too short to redact")
-    process_environment = os.environ.copy()
-    process_environment.update(selected_environment)
-    if not show_redacted_output:
-        completed = subprocess.run(
-            command,
-            env=process_environment,
-            cwd=working_directory,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        print(f"Command finished; exit={completed.returncode}; output suppressed.")
-        return completed.returncode if completed.returncode >= 0 else 1
-    completed = subprocess.run(
-        command,
-        env=process_environment,
-        cwd=working_directory,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    child_output = completed.stdout.decode("utf-8", errors="replace")
-    print(redact_output(child_output, injected_values), end="")
-    print(f"Command finished; exit={completed.returncode}; values redacted.")
-    return completed.returncode if completed.returncode >= 0 else 1
 
 
 def main() -> int:

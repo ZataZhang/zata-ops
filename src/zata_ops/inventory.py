@@ -80,7 +80,7 @@ class InventoryConfig(InventoryRecord):
 
     schema_version: Literal[1]
     updated_at: str
-    servers: Annotated[list[ServerConfig], Field(min_length=1)]
+    servers: list[ServerConfig]
 
     @model_validator(mode="after")
     def validate_unique_names(self) -> InventoryConfig:
@@ -114,7 +114,21 @@ def load_inventory(inventory_path: Path) -> InventoryConfig:
         OSError: File cannot be read.
         ValueError: TOML or inventory fields are invalid.
     """
-    inventory_text = inventory_path.read_text(encoding="utf-8")
+    inventory = parse_inventory(inventory_path.read_text(encoding="utf-8"))
+    if not inventory.servers:
+        raise ValueError("inventory must contain a server")
+    return inventory
+
+
+def parse_inventory(inventory_text: str) -> InventoryConfig:
+    """Validate inventory from TOML text.
+
+    Args:
+        inventory_text: Serialized inventory document.
+
+    Returns:
+        Validated inventory.
+    """
     try:
         inventory_json = json.dumps(tomllib.loads(inventory_text))
     except TypeError:

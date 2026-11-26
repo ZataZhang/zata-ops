@@ -32,7 +32,8 @@ class ServiceConfig(InventoryRecord):
     database: str
     username: str
     url: str = ""
-    password_env: str
+    password_env: str = ""
+    credential_ref: str = ""
     notes: str
     # 以下为可选的凭据生命周期元数据，主要服务 API Token；数据库密码通常留空。
     scope: str = ""
@@ -73,9 +74,16 @@ class ServiceConfig(InventoryRecord):
         Raises:
             ValueError: If the reference is not a valid environment name.
         """
-        if not SECRET_NAME.fullmatch(value):
+        if value and not SECRET_NAME.fullmatch(value):
             raise ValueError("invalid credential reference")
         return value
+
+    @model_validator(mode="after")
+    def validate_credential_source(self) -> ServiceConfig:
+        """Ensure every service references exactly one credential source."""
+        if bool(self.password_env) == bool(self.credential_ref):
+            raise ValueError("expected exactly one credential reference")
+        return self
 
     @field_validator("url")
     @classmethod
@@ -124,7 +132,7 @@ class ServicesConfig(InventoryRecord):
         """
         for service_names in (
             [service.name for service in self.services],
-            [service.password_env for service in self.services],
+            [service.password_env for service in self.services if service.password_env],
         ):
             if len(service_names) != len(set(service_names)):
                 raise ValueError("duplicate services or credential references")
@@ -172,7 +180,10 @@ def load_services(
         return ServicesConfig()
     if enforce_permissions:
         service_path.chmod(0o600)
-    return parse_services_config(service_path.read_text(encoding="utf-8"))
+    registry = parse_services_config(service_path.read_text(encoding="utf-8"))
+    if any(service.credential_ref for service in registry.services):
+        raise ValueError("remote credentials require a remote profile")
+    return registry
 
 
 def serialize_services_config(services_config: ServicesConfig) -> str:
@@ -190,6 +201,7 @@ def serialize_services_config(services_config: ServicesConfig) -> str:
         metadata_lines.extend(
             f"{field_name} = {json.dumps(field_value, ensure_ascii=False)}"
             for field_name, field_value in service_record.model_dump().items()
+            if field_name != "credential_ref" or field_value
         )
         metadata_lines.append("")
     return "\n".join(metadata_lines)
@@ -270,7 +282,7 @@ def summarize_services(
         )
         service_summaries.append(
             {
-                **service_entry.model_dump(),
+                **service_entry.model_dump(exclude={"credential_ref"}),
                 "password_configured": credential_status_by_name.get(
                     service_entry.password_env, False
                 ),

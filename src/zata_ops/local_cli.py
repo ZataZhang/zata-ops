@@ -12,7 +12,10 @@ import typer
 from zata_ops import __version__
 from zata_ops.config import DEFAULT_PRIVATE_DIR, PRIVATE_DIR_ENV
 from zata_ops.inventory import load_inventory
+from zata_ops.openbao import OpenBaoError
 from zata_ops.private_credentials import credential_status
+from zata_ops.remote_cli import run_service
+from zata_ops.remote_inventory import RemoteInventory, remote_client
 from zata_ops.services import load_services, summarize_services
 
 PrivateDirOption = Annotated[
@@ -24,6 +27,7 @@ PrivateDirOption = Annotated[
 
 service_app = typer.Typer(no_args_is_help=True, add_completion=False)
 local_app = typer.Typer()
+service_app.command("run")(run_service)
 
 
 def _emit_report(
@@ -41,9 +45,46 @@ def _emit_report(
 
 
 def _query_service_registry(
-    operation: str, private_dir: Path, name: str | None = None
+    operation: str, private_dir: Path | None, name: str | None = None
 ) -> None:
-    selected_directory = private_dir.expanduser()
+    try:
+        client = remote_client(local_override=private_dir is not None)
+        if client is not None:
+            snapshot = RemoteInventory.parse(client.read_inventory())
+            records = [
+                entry
+                for entry in snapshot.services.services
+                if name is None or entry.name == name
+            ]
+            if name is not None and not records:
+                _emit_report(
+                    operation,
+                    {"status": "error", "reason": "service_not_found"},
+                    exit_code=1,
+                )
+            summaries = summarize_services(records, {})
+            for entry, summary in zip(records, summaries, strict=True):
+                summary.pop("password_configured")
+                summary.pop("password_env")
+                summary.update(
+                    credential_ref=entry.credential_ref,
+                    credential_status="reference_registered",
+                )
+            _emit_report(
+                operation,
+                {
+                    "status": "ok",
+                    "services": summaries,
+                    "inventory_version": snapshot.record.version,
+                },
+            )
+            return
+    except OpenBaoError as error:
+        _emit_report(
+            operation, {"status": "error", "reason": error.reason}, exit_code=2
+        )
+
+    selected_directory = (private_dir or DEFAULT_PRIVATE_DIR).expanduser()
     try:
         if not selected_directory.is_dir():
             raise ValueError("missing private directory")
@@ -73,14 +114,21 @@ def _query_service_registry(
 
 
 @service_app.command("list")
-def _list_services(private_dir: PrivateDirOption = DEFAULT_PRIVATE_DIR) -> None:
+def _list_services(
+    private_dir: Annotated[
+        Path | None, typer.Option("--private-dir", envvar=PRIVATE_DIR_ENV)
+    ] = None,
+) -> None:
     """List registered services and their credential status."""
     _query_service_registry("service.list", private_dir)
 
 
 @service_app.command("show")
 def _show_service(
-    name: str, private_dir: PrivateDirOption = DEFAULT_PRIVATE_DIR
+    name: str,
+    private_dir: Annotated[
+        Path | None, typer.Option("--private-dir", envvar=PRIVATE_DIR_ENV)
+    ] = None,
 ) -> None:
     """Show the service matching an exact name."""
     _query_service_registry("service.show", private_dir, name)

@@ -80,18 +80,28 @@ def load_deploy_targets(
         raise DeployTargetError(f"部署 target 文件不存在: {targets_path}")
 
     try:
-        with targets_path.open("rb") as targets_handle:
-            raw_config = tomllib.load(targets_handle)
+        return parse_deploy_targets(targets_path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise DeployTargetError(
             f"部署 target 文件无法解析: {targets_path}: {exc}"
         ) from exc
 
-    raw_targets = raw_config.get("targets")
-    if not isinstance(raw_targets, list) or not raw_targets:
-        raise DeployTargetError(
-            f"部署 target 文件缺少非空 targets 列表: {targets_path}"
-        )
+
+def parse_deploy_targets(
+    targets_text: str, *, allow_empty: bool = False
+) -> dict[str, DeployTarget]:
+    """Parse deployment targets from a TOML document.
+
+    Args:
+        targets_text: Deployment target document.
+        allow_empty: Accept an explicitly empty list for remote inventories.
+
+    Returns:
+        Validated targets keyed by name.
+    """
+    raw_targets = tomllib.loads(targets_text).get("targets")
+    if not isinstance(raw_targets, list) or (not raw_targets and not allow_empty):
+        raise DeployTargetError("部署 target 文件缺少所需的 targets 列表")
 
     targets: dict[str, DeployTarget] = {}
     for raw_target in raw_targets:

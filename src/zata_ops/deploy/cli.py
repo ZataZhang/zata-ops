@@ -31,7 +31,28 @@ from zata_ops.deploy.targets import (
     validate_image_tag,
 )
 
+from zata_ops.openbao import OpenBaoError
+from zata_ops.remote_inventory import RemoteInventory, remote_client
+
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+
+
+def _resolve_target(
+    target_name: str, targets_file: Path | None
+) -> tuple[DeployTarget, int | None]:
+    try:
+        client = remote_client(local_override=targets_file is not None)
+        if client is None:
+            return resolve_deploy_target(
+                target_name, targets_file or DEFAULT_TARGETS_FILE
+            ), None
+        snapshot = RemoteInventory.parse(client.read_inventory())
+        if target_name not in snapshot.targets:
+            raise DeployTargetError("target_not_found")
+        return snapshot.targets[target_name], snapshot.record.version
+    except OpenBaoError as error:
+        raise DeployTargetError(error.reason) from None
+
 
 EXIT_QUERY_FAILED = 1
 EXIT_CONFIG_ERROR = 2
@@ -41,8 +62,8 @@ EXIT_CONFIRMATION_REQUIRED = 3
 @app.command("status")
 def status_command(
     target_name: str = typer.Option(..., "--target", "-t", help="部署 target 名称。"),
-    targets_file: Path = typer.Option(
-        DEFAULT_TARGETS_FILE, "--targets-file", help="私有部署 target TOML 路径。"
+    targets_file: Path | None = typer.Option(
+        None, "--targets-file", help="私有部署 target TOML 路径。"
     ),
     history_limit: int = typer.Option(5, "--limit", help="附带返回的最近部署条数。"),
     check_health: bool = typer.Option(
@@ -60,7 +81,7 @@ def status_command(
         json_output: 是否输出 JSON。
     """
     try:
-        target = resolve_deploy_target(target_name, targets_file)
+        target, inventory_version = _resolve_target(target_name, targets_file)
     except DeployTargetError as exc:
         _fail(
             "deploy.status", "invalid_target", str(exc), json_output, EXIT_CONFIG_ERROR
@@ -105,6 +126,8 @@ def status_command(
         "health": health_result,
     }
 
+    if inventory_version is not None:
+        payload["inventory_version"] = inventory_version
     if json_output:
         _print_json(payload)
         return
@@ -134,7 +157,7 @@ def status_command(
 @app.command("history")
 def history_command(
     target_name: str = typer.Option(..., "--target", "-t", help="部署 target 名称。"),
-    targets_file: Path = typer.Option(DEFAULT_TARGETS_FILE, "--targets-file"),
+    targets_file: Path | None = typer.Option(None, "--targets-file"),
     limit: int = typer.Option(10, "--limit", help="返回条数上限。"),
     json_output: bool = typer.Option(False, "--json", help="输出 JSON。"),
 ) -> None:
@@ -147,7 +170,7 @@ def history_command(
         json_output: 是否输出 JSON。
     """
     try:
-        target = resolve_deploy_target(target_name, targets_file)
+        target, inventory_version = _resolve_target(target_name, targets_file)
     except DeployTargetError as exc:
         _fail(
             "deploy.history", "invalid_target", str(exc), json_output, EXIT_CONFIG_ERROR
@@ -175,6 +198,8 @@ def history_command(
         "deployments": deployment_summaries,
     }
 
+    if inventory_version is not None:
+        payload["inventory_version"] = inventory_version
     if json_output:
         _print_json(payload)
         return
@@ -199,7 +224,7 @@ def rollback_command(
     image_tag: str = typer.Option(
         ..., "--to", help="目标镜像 tag，例如 <sha>-production。"
     ),
-    targets_file: Path = typer.Option(DEFAULT_TARGETS_FILE, "--targets-file"),
+    targets_file: Path | None = typer.Option(None, "--targets-file"),
     dry_run: bool = typer.Option(False, "--dry-run", help="只打印回滚计划，不触发。"),
     confirm: bool = typer.Option(False, "--confirm", help="确认执行回滚。"),
     json_output: bool = typer.Option(False, "--json", help="输出 JSON。"),
@@ -215,7 +240,7 @@ def rollback_command(
         json_output: 是否输出 JSON。
     """
     try:
-        target = resolve_deploy_target(target_name, targets_file)
+        target, inventory_version = _resolve_target(target_name, targets_file)
         validated_tag = validate_image_tag(image_tag)
     except DeployTargetError as exc:
         _fail(
@@ -240,6 +265,8 @@ def rollback_command(
         "command": planned_command,
     }
 
+    if inventory_version is not None:
+        plan["inventory_version"] = inventory_version
     if dry_run:
         plan["status"] = "dry_run"
         _emit_plan(plan, json_output)

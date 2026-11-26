@@ -96,6 +96,8 @@ path "kv/data/prod/example-app/runtime" {
 
 为每个应用和环境创建独立 AppRole，把读取策略绑定到角色，并由可信的部署流程提供短时 SecretID。新主机先建立可信连接，再凭角色登录。跨主机长期使用时可按应用的网络位置选择受控入口。对于只在启动时读取环境变量的应用，更新 KV 后需重新部署或重启才能使用新值。[KV v2 命令](https://openbao.org/docs/commands/kv/)，[AppRole](https://openbao.org/docs/auth/approle/)
 
+使用 zata-ops 远端清单、凭据注入与不可变审计归档见 [远端运维清单与凭据](remote-operations.md)。
+
 ## 停止、备份与维护
 
 - `docker compose down` 停止实例，保留 Raft 和审计卷。重新启动后从原卷解封。`down --volumes` 会删除这两个卷。

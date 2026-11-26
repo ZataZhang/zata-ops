@@ -6,22 +6,27 @@ Mounts application inspection and operational sub-applications. Run
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import typer
 
 from zata_ops import __version__
 from zata_ops.app import cli as application_cli
+from zata_ops.audit_archive import archive_command
 from zata_ops.db import cli as db_cli
 from zata_ops.deploy import cli as deploy_cli
 from zata_ops.env import cli as env_cli
 from zata_ops.local_cli import local_app, service_app
 from zata_ops.logs import cli as logs_cli
 from zata_ops.observability import cli as observability_cli
+from zata_ops.remote_cli import config_app
+from zata_ops.remote_inventory import ACTIVE_PROFILE
 from zata_ops.tunnel import cli as tunnel_cli
 
 app: typer.Typer = typer.Typer(
     name="zata-ops",
+    pretty_exceptions_show_locals=False,
     help=(
         "Lightweight operations toolkit for AI agents. "
         "Provides inventory-driven app inspection, db backup/restore, VPS provisioning, "
@@ -31,7 +36,11 @@ app: typer.Typer = typer.Typer(
     add_completion=False,
 )
 
+audit_app = typer.Typer(no_args_is_help=True, add_completion=False)
+audit_app.command("archive")(archive_command)
+app.add_typer(audit_app, name="audit", help="Deliver OpenBao audit events.")
 app.add_typer(local_app)
+app.add_typer(config_app, name="config", help="Publish or roll back remote inventory.")
 app.add_typer(service_app, name="service", help="Query the private service registry.")
 
 app.add_typer(
@@ -67,6 +76,7 @@ def _print_version_and_exit(value: bool) -> None:
 
 @app.callback()
 def _main(
+    ctx: typer.Context,
     version: Optional[bool] = typer.Option(
         None,
         "--version",
@@ -75,15 +85,27 @@ def _main(
         callback=_print_version_and_exit,
         help="Show the installed zata-ops version and exit.",
     ),
+    profile: Optional[Path] = typer.Option(
+        None, "--profile", help="Explicit OpenBao profile."
+    ),
 ) -> None:
     """Root callback that handles ``--version``.
 
     Args:
+        ctx: Active CLI invocation.
+        profile: Optional OpenBao profile.
         version: Triggered by Typer when ``--version`` is passed.
     """
-    # The callback exists so that ``--version`` is parsed before any
-    # subcommand requires its own arguments. No state to set up here.
-    return None
+    if profile is not None and ctx.invoked_subcommand not in {
+        "service",
+        "app",
+        "deploy",
+        "config",
+    }:
+        typer.echo("remote_profile_unsupported_for_command", err=True)
+        raise typer.Exit(2)
+    profile_context = ACTIVE_PROFILE.set(profile)
+    ctx.call_on_close(lambda: ACTIVE_PROFILE.reset(profile_context))
 
 
 if __name__ == "__main__":  # pragma: no cover
