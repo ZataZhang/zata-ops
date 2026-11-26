@@ -252,6 +252,14 @@ just inventory-check config/servers.example.toml --example
 验证不连接服务器，不验证密钥存在、SSH 认证、应用在线状态或日期格式。
 缺失文件和格式错误会以非零状态退出。`app inspect` 和 `doctor` 读取此清单。参见[独立 CLI 安装](cli-installation.md)。
 
+## 拓扑同步
+
+配置变更经验证后，如果影响域名入口、服务部署位置、节点角色、跨机链路、出口或外部依赖，
+在更新私有清单和相关快照时同步更新已有私有拓扑页。主图、服务器视图和关系说明应一致。
+流程见 [server-topology-html](https://github.com/ZataZhang/zata-ops/blob/main/skills/server-topology-html/SKILL.md)。
+
+仅涉及凭据轮换或未改变图中信息的应用参数时，无需更新拓扑。内存和根分区用量按需重新采集，并注明采集时间。
+
 ## 应用现场检查
 
 ```bash
