@@ -22,7 +22,15 @@ uv run mkdocs build --strict
 
 ## 仓库验证
 
-- 隔离端到端测试 2 项通过。
+- 在提交 `ed05d21` 上重新运行隔离端到端测试，2 项通过。MkDocs 严格构建也已重新通过。
 - Linux 容器用 Python 3.11 安装 wheel，三个新命令入口与依赖检查通过。远端端到端测试由 macOS 客户端运行。
 - Ruff、复用 lint、跳过测试状态戳的全量 lint 和 MkDocs 严格构建通过。
-- 全量回归有 183 项通过、2 项按 opt-in 跳过，已有隧道终止测试在全量运行时失败。该项单独运行通过，基线隧道测试文件单独运行也通过。剔除该项后的全量回归通过。Windows 及生产环境验证仍待执行。
+- 提交前用 `PYTEST_ADDOPTS=--failed-first just test` 运行完整回归，184 项通过、2 项按 opt-in 跳过。默认顺序下，已有隧道终止测试出现过失败。Windows 及生产环境验证仍待执行。
+
+## 容器部署验证
+
+- 从当前源码构建了 `zata-ops:local`，在本机 Docker 验证 `linux/arm64` 镜像入口。
+- 用生产模板的 OpenBao 服务和审计归档 Compose 扩展启动隔离项目。以合成身份发起真实取密。归档容器只读访问审计卷，并将对应请求写入独立的 TLS 测试对象存储。按版本读回后核实 Compliance 锁定，提前删除被拒。
+- 重启归档容器后，检查点卷里的 SQLite 文件仍可用，已归档的对象版本数量保持不变。
+- Compose 配置、ShellCheck、actionlint 和 MkDocs 严格构建通过。GHCR 工作流配置支持两个 Linux 架构，尚待版本标签触发发布。
+- 发布候选 `v0.1.1` 已在本机构建 `linux/amd64` 与 `linux/arm64` 镜像，两者均启动并通过 CLI 版本及审计命令检查。ARM64 版本重新通过 Compose 取密、不可变归档和重启检查，另有 65 项相关回归测试通过。GHCR 标签尚待发布。

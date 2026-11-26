@@ -36,9 +36,14 @@ docs
 tests
 mkdocs.yml
 
-# Local env files
-.env
-.env.local
+# Local configuration and credentials
+**/.env
+**/.env.*
+config/private
+**/audit-private
+**/tls
+**/*.key
+**/*.pem
 
 # Misc
 *.sqlite3

@@ -29,8 +29,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-
 RUN pip install --no-cache-dir .
+COPY --chmod=755 docker/audit-worker.sh /usr/local/bin/zata-ops-audit-worker
 
 ENTRYPOINT ["zata-ops"]
 CMD ["--help"]

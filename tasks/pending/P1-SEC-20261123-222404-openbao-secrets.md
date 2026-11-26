@@ -2,7 +2,7 @@
 
 > ✅ **交付前置**：无上游任务依赖。结构化声明见 §8 Delivery Dependencies。
 
-> ⬜ **验收状态**：未开工。本行投影自 §9 Acceptance Checklist。
+> ⏸️ **验收状态**：验证阻塞。本行投影自 §9 Acceptance Checklist，阻塞和跟踪任务见 Final Reconciliation。
 
 Part A 用于确认操作体验和权限边界。Part B 给出实现、迁移和验收计划。跟踪任务见 [Issue #5](https://github.com/ZataZhang/zata-ops/issues/5)。
 
@@ -311,13 +311,13 @@ uv run zata-ops --profile dev-publish.profile.toml config rollback --to-version 
 4. 改用权限较窄的身份重复任务，展示拒绝和零启动，再展示可查回的拒绝事件。
 5. 停止演练端，展示如何进入独立恢复入口、恢复快照并用新会话复查。生产投递和撤销只展示已授权操作的脱敏回执。
 
-演示在实施验收时录制，用独立终端录屏呈现上述五步。用合成凭据，避免录到真正的凭据或 token。用显式注释标记替身和未执行项。以下证据路径为交付目标，目前待生成。
+已生成[阶段证据报告](../evidence/P1-SEC-20261123-222404-openbao-secrets/P1-SEC-20261123-222404-openbao-secrets.evidence-report.md)，人审导航可看到当前隔离验证结果。主演示仍待录制，录制时使用合成凭据并标明隔离环境和未执行项。
 
 | 判据 | 交付入口 | 自查位置 |
 | --- | --- | --- |
-| rv-1 | `open "tasks/evidence/P1-SEC-20261123-222404-openbao-secrets/rv-1.md"` | 查看三份目标来自同一版本，冲突被拒后新会话仍读取正确版本。 |
-| rv-2 | `open "tasks/evidence/P1-SEC-20261123-222404-openbao-secrets/rv-2.md"` | 查看审计时间线中两条不同路径，已归档版本的删除及缩短留存拒绝，以及失败任务启动计数为零。 |
-| rv-3 | `open "tasks/evidence/P1-SEC-20261123-222404-openbao-secrets/rv-3.md"` | 查看恢复后当前身份成功、旧身份拒绝和签发方的旧值撤销结果。 |
+| rv-1 | [阶段证据报告的人审导航](../evidence/P1-SEC-20261123-222404-openbao-secrets/P1-SEC-20261123-222404-openbao-secrets.evidence-report.md) | 查看三个查询入口读取同一版本，普通身份及陈旧版本写入被拒，回滚生成新版本。 |
+| rv-2 | [阶段证据报告的人审导航](../evidence/P1-SEC-20261123-222404-openbao-secrets/P1-SEC-20261123-222404-openbao-secrets.evidence-report.md) | 查看逐条取用、失败时零启动、提前删除和缩短留存的隔离验证。生产告警投递待验证。 |
+| rv-3 | [阶段证据报告的人审导航](../evidence/P1-SEC-20261123-222404-openbao-secrets/P1-SEC-20261123-222404-openbao-secrets.evidence-report.md) | 查看恢复后当前身份成功和旧身份拒绝。生产签发方撤销待验证。 |
 
 本机兼容和文档构建由 verifier 核对。交付报告以 `## 人审导航 / Human Review Navigation` 开头，集合以上入口、主演示及可用的验证链接。
 
@@ -336,7 +336,7 @@ uv run zata-ops --profile dev-publish.profile.toml config rollback --to-version 
 
 #### Documentation Acceptance
 
-- [ ] 运维指南和 `mkdocs.yml` 同步，`uv run mkdocs build --strict` 通过，公开补丁与证据复核未暴露真实配置及凭据。
+- [x] 运维指南和 `mkdocs.yml` 已同步，`uv run mkdocs build --strict` 通过，公开提交和阶段证据均使用合成数据及占位符。
 
 #### Delivery Readiness
 
@@ -350,9 +350,11 @@ uv run zata-ops --profile dev-publish.profile.toml config rollback --to-version 
 
 ### Final Reconciliation
 
-- Verified tree: 已验证本地工作区的隔离实现，未形成待验收的交付树
+- Verified tree: `ed05d21` 的隔离实现已验证，生产环境和 Windows 验收待补齐
 - Independent verifier verdict: 待验证
 - Reflected differences: 审计归档使用 `audit archive` 周期运行，开放脱敏告警事件和积压状态，通知接入与独立存储配置在生产环境验收。
+- Validation blocker: 待确认已授权的短信试点目标、生产归档和告警接收端。当前验证环境没有 Windows 执行器，独立审阅待完成。
+- Validation follow-up: [Issue #5](https://github.com/ZataZhang/zata-ops/issues/5) 跟踪生产试点、Windows 验证、独立审阅和主演示。
 
 本地实现与合成数据验证见 [阶段证据报告](../evidence/P1-SEC-20261123-222404-openbao-secrets/P1-SEC-20261123-222404-openbao-secrets.evidence-report.md)。生产试点、独立归档账户和通知渠道的实机验证、Windows 客户端及独立 verifier 尚待补齐。
 

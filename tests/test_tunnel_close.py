@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import select
 import signal
 import subprocess
 from unittest import mock
@@ -87,12 +88,16 @@ def test_close_escalates_to_sigkill_when_sigterm_ignored(isolated_state_dir):
             "-c",
             "import signal, time\n"
             "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "print('ready', flush=True)\n"
             "while True:\n    time.sleep(0.1)\n",
         ],
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
     )
     try:
+        assert trapper.stdout is not None
+        ready_pipes, _, _ = select.select([trapper.stdout], [], [], 5)
+        assert ready_pipes and trapper.stdout.readline() == b"ready\n"
         # Shorten the grace period so the test runs in <1s.
         with mock.patch.object(
             _state, "SHUTDOWN_GRACE_SECONDS", 0.2
@@ -110,10 +115,12 @@ def test_close_escalates_to_sigkill_when_sigterm_ignored(isolated_state_dir):
             result = runner.invoke(app, ["tunnel", "close", "stubborn"])
         assert result.exit_code == 0
         assert not (isolated_state_dir / "stubborn.json").exists()
-        assert _state.is_pid_alive(trapper.pid) is False
+        assert trapper.wait(timeout=5) == -signal.SIGKILL
     finally:
         try:
             os.kill(trapper.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
         trapper.wait(timeout=5)
+        if trapper.stdout is not None:
+            trapper.stdout.close()

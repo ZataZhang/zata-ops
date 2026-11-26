@@ -1,0 +1,7 @@
+source = "/openbao-audit/audit.jsonl"
+checkpoint = "/var/lib/zata-ops-audit/checkpoint.sqlite"
+bucket = "<AUDIT_BUCKET>"
+prefix = "openbao/example-environment"
+credential_mount = "ops-credentials"
+retention_days = 30
+region = "<AUDIT_REGION>"

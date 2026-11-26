@@ -40,6 +40,8 @@ uv tool install --force --reinstall /path/to/zata-ops
 
 ---
 
+服务器部署可用 Docker Compose 启动 OpenBao 和 zata-ops 审计归档容器。安装和版本发布见[服务器容器部署](docs/guides/remote-operations.md#docker-compose)。
+
 ## 快速上手
 
 所有命令会读取**当前工作目录**下的 `.env` 与 `.env.local`;命令行参数(`--xxx`)的优先级最高。带 `--dry-run` 的命令建议**先预览再执行**,避免误操作打到线上。

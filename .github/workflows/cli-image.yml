@@ -1,0 +1,80 @@
+name: CLI image
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cli-image.yml"
+      - ".dockerignore"
+      - "docker/**"
+      - "deploy/openbao/compose*.yaml"
+      - "pyproject.toml"
+      - "src/zata_ops/**"
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and smoke-test
+        run: |
+          docker build -f docker/Dockerfile -t zata-ops:ci \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" .
+          test "$(docker image inspect zata-ops:ci --format '{{.Architecture}}')" = "$ARCH"
+          cli_version="$(docker run --rm zata-ops:ci --version)"
+          printf '%s\n' "$cli_version"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$cli_version" = "zata-ops ${GITHUB_REF_NAME#v}"
+          fi
+          docker run --rm zata-ops:ci config publish --help
+          docker run --rm zata-ops:ci audit archive --help
+          docker run --rm -e ZATA_OPS_AUDIT_INTERVAL_SECONDS=1 \
+            --entrypoint /bin/sh zata-ops:ci \
+            -ec 'command -v zata-ops-audit-worker && sh -n /usr/local/bin/zata-ops-audit-worker'
+          docker compose -f deploy/openbao/compose.yaml -f deploy/openbao/compose.audit.yaml config --quiet
+      - name: Push architecture image
+        if: github.ref_type == 'tag'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME}-${ARCH}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag zata-ops:ci "$image"
+          docker push "$image"
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Publish and verify multi-platform tag
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_REF_NAME}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create --tag "$image" "$image-amd64" "$image-arm64"
+          docker buildx imagetools inspect --raw "$image" | jq -e '
+            [.manifests[].platform | select(.os == "linux") | .architecture]
+            | unique == ["amd64", "arm64"]'

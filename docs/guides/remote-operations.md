@@ -96,3 +96,25 @@ zata-ops audit archive --config audit.profile.toml
 ```bash
 ZATA_OPS_TEST_OPENBAO=1 uv run pytest tests/test_openbao_remote_live.py -q
 ```
+
+## 在服务器用 Docker Compose 部署
+
+部署由 OpenBao 和 `zata-ops` 审计归档容器组成。宿主机需要 Docker Compose；工作站用已有 CLI 通过 OpenBao 的私有入口访问清单及凭据。
+
+1. 在部署目录按 [OpenBao 部署指南](openbao.md) 准备 TLS。已有实例沿用其原 Compose 项目名和 Raft 卷。
+2. 在独立存储端准备启用了版本控制和 Compliance 留存的 S3 桶，按上节为归档身份授予指定前缀的读写权限。
+3. 将 `deploy/openbao/audit-archive.example.toml` 复制为私有目录中的 `archive.toml`，填好桶、前缀、区域和留存期。保留示例里的两个容器路径。通过权限受限的 `aws-credentials` 文件提供归档身份，文件使用标准 AWS shared credentials 的 `[default]` 格式。这两个文件所在目录在仓库中默认为 `config/private/openbao-audit/`。独立部署目录可以通过 `ZATA_OPS_AUDIT_CONFIG_DIR` 指向宿主机上的私有绝对路径。
+4. 在仓库根目录选择已发布的镜像版本，拉取并启动：
+
+   ```bash
+   export ZATA_OPS_IMAGE='ghcr.io/zatazhang/zata-ops:<VERSION_TAG>'
+   docker compose -f deploy/openbao/compose.yaml -f deploy/openbao/compose.audit.yaml pull
+   docker compose -f deploy/openbao/compose.yaml -f deploy/openbao/compose.audit.yaml up -d
+   docker compose -f deploy/openbao/compose.yaml -f deploy/openbao/compose.audit.yaml logs --tail=20 audit-worker
+   ```
+
+   上面的标签占位符要替换成实际版本。若直接使用当前源码，运行 `docker build -f docker/Dockerfile -t zata-ops:local .`，保持默认镜像名，然后执行 `up -d`。归档容器只读挂载审计文件，写入独立检查点卷。默认每 30 秒执行一轮，失败后按同一间隔重试；可设置 `ZATA_OPS_AUDIT_INTERVAL_SECONDS` 调整。OpenBao 首次启动后仍需初始化并解封。
+
+5. 从工作站执行一次已授权的取密操作。确认归档日志出现成功记录，再按请求 ID 从独立存储读回受保护版本。停止并重启归档容器后，确认原检查点仍可用。停机使用相同的 Compose 文件组合执行 `stop`，保留 Raft、审计和检查点卷。
+
+仓库的 CLI image 工作流会在版本标签推送后分别构建和测试 `linux/amd64` 和 `linux/arm64`，再发布合并标签到 GHCR。首次发布后，按下载范围设置包可见性。若包是私有的，部署前以有读取权限的身份登录 GHCR。[GitHub 托管运行器](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)

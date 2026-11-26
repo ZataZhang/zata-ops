@@ -1,0 +1,31 @@
+services:
+  audit-worker:
+    image: ${ZATA_OPS_IMAGE:-zata-ops:local}
+    entrypoint: ["/usr/local/bin/zata-ops-audit-worker"]
+    command: ["/etc/zata-ops-audit/archive.toml"]
+    environment:
+      AWS_SHARED_CREDENTIALS_FILE: /etc/zata-ops-audit/aws-credentials
+      AWS_EC2_METADATA_DISABLED: "true"
+      ZATA_OPS_AUDIT_INTERVAL_SECONDS: ${ZATA_OPS_AUDIT_INTERVAL_SECONDS:-30}
+    volumes:
+      - audit-log:/openbao-audit:ro
+      - archive-state:/var/lib/zata-ops-audit
+      - type: bind
+        source: ${ZATA_OPS_AUDIT_CONFIG_DIR:-../../config/private/openbao-audit}
+        target: /etc/zata-ops-audit
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    cap_drop: [ALL]
+    # OpenBao writes its audit file with mode 0600 under a different UID.
+    cap_add: [DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    ulimits:
+      core: 0
+    restart: unless-stopped
+    logging:
+      driver: local
+
+volumes:
+  archive-state:
