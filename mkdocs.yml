@@ -49,6 +49,7 @@ nav:
       - Swarm 入口与算力分离: guides/swarm-production.md
       - Nacos 开发与远程部署准备: guides/nacos.md
       - Nacos dotenv 安全使用: guides/nacos-env.md
+      - Nacos 与 OpenBao 生产配置迁移: guides/configuration-secrets-migration.md
       - OpenBao 部署与使用: guides/openbao.md
       - OpenBao 日常使用指南: guides/openbao-usage.md
       - 远端运维清单与凭据: guides/remote-operations.md

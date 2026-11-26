@@ -172,6 +172,8 @@ bao kv patch -mount=kv dev/example-app/runtime - < '<PRIVATE_PATCH_JSON>'
 
 Dokploy Provider 使用其配置的 token 读取密钥。应核对当前版本支持的认证和续期能力；使用静态 token 时，需要维护换新流程。轮换 Provider token 后，应测试一次实际密钥读取或部署，再撤销旧 token。变更 OpenBao 的 KV 值后，已运行应用何时取得新值取决于它的加载方式。网络与部署接入步骤见 [Traefik 入口](openbao-traefik.md)。
 
+现有应用迁移 Nacos 与 OpenBao 时，按[生产配置迁移](configuration-secrets-migration.md)核对原值、发布平台转义、网络重建、隔离恢复和真实业务入口。临时回滚备份按用户约定清理，日常凭据与解封材料继续保留。
+
 ## 审计与故障排查
 
 当前部署模板将审计日志写入独立持久化卷。审计中可以核对请求时间、路径、操作、身份和错误；敏感字符串通常以 HMAC 记录。`sys/health` 等少数接口不进入这套审计，入口代理拦截的请求也不会到达 OpenBao。审计是事件记录，告警需要另行配置采集、规则和通知渠道。[审计说明](https://openbao.org/docs/audit/)
