@@ -44,6 +44,8 @@
 
 realm 文件只在 realm 不存在时导入，之后的改动先改文件并审查，再用 `kcadm.sh` 应用到线上，步骤见 README。
 
+共享登录页提交表单后会拦截同一页面上的后续提交，包括验证码验证与重发之间的重复操作。登录操作已过期时，页面提供重新开始入口。FreshAI 主题使用 client 的 Home URL 返回应用开启新的 OIDC 事务，其他共享主题使用 Keycloak 的流程重启入口。
+
 ## 新应用接入
 
 1. 在管理后台为应用的每个环境新增一个 Client，按下方模板设置。只有带自定义映射器或主题的 Client（如 `freshai-user.json`）才在仓库保存 JSON；线上 Client 以 Keycloak 数据库为准，由 `just keycloak-backup` 备份。

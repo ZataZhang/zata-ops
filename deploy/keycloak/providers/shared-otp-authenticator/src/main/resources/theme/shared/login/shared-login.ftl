@@ -3,6 +3,13 @@
   <#if section = "header">
     ${msg("sharedLoginTitle")}
   <#elseif section = "form">
+    <#if message?has_content && (message.summary == msg("expiredActionMessage") || message.summary == msg("loginTimeout"))>
+      <#assign restartUrl = url.loginRestartFlowUrl>
+      <#if (properties.sharedRestartAtClient!"false") == "true" && client?? && client.baseUrl?has_content>
+        <#assign restartUrl = client.baseUrl?remove_ending("/") + "/login?restart_sso=true">
+      </#if>
+      <p><a class="shared-login-link" href="${restartUrl}">${msg("sharedRestartLogin")}</a></p>
+    </#if>
     <#-- 同名 details 互斥展开：先显示登录方式按钮，点开后才出现对应表单。 -->
     <div class="shared-login-methods">
       <details class="shared-login-method" name="shared-login-method">
